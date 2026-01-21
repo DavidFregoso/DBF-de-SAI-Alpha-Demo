@@ -74,9 +74,14 @@ foreach ($line in $pthContent) {
     }
 }
 
-# Add current directory to sys.path so the staged app package can be imported
-if (-not ($updatedContent -contains ".")) {
-    $updatedContent = @(".",) + $updatedContent
+$updatedContent = $updatedContent | Where-Object { $_ -ne "." }
+
+# Add current directory to sys.path as the first entry
+$updatedContent = @(".",) + $updatedContent
+
+# Ensure import site is enabled
+if (-not ($updatedContent -contains "import site")) {
+    $updatedContent += "import site"
 }
 
 # Ensure site-packages is available

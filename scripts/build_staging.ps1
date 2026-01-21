@@ -1,27 +1,34 @@
 param(
-    [string]$PythonVersion = "3.11.14",
+    [string]$PythonVersion = "",
     [string]$Architecture = "amd64"
 )
 
 $ErrorActionPreference = "Stop"
 
-$requiredPythonVersion = "3.11.14"
 $requiredArchitecture = "64bit"
 
 $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
 if (-not $pyLauncher) {
-    throw "Python launcher (py) not found. Install Python $requiredPythonVersion x64 to build the installer."
+    throw "Python launcher (py) not found. Install Python 3.11 x64 to build the installer."
 }
 
 $pyInfo = & py -3.11 -c "import platform, sys; print(sys.version.split()[0]); print(platform.architecture()[0])" 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $pyInfo) {
-    throw "Python 3.11 not found via 'py -3.11'. Install Python $requiredPythonVersion x64 to build the installer."
+    throw "Python 3.11 not found via 'py -3.11'. Install Python 3.11 x64 to build the installer."
 }
 
 $pyVersion = $pyInfo[0]
 $pyArch = $pyInfo[1]
-if ($pyVersion -ne $requiredPythonVersion -or $pyArch -ne $requiredArchitecture) {
-    throw "Python $requiredPythonVersion x64 is required. Detected $pyVersion $pyArch via 'py -3.11'."
+if (-not $pyVersion.StartsWith("3.11.") -or $pyArch -ne $requiredArchitecture) {
+    throw "Python 3.11 x64 is required. Detected $pyVersion $pyArch via 'py -3.11'."
+}
+
+if ([string]::IsNullOrWhiteSpace($PythonVersion)) {
+    $PythonVersion = $pyVersion
+}
+
+if (-not $PythonVersion.StartsWith("3.11.")) {
+    throw "PythonVersion must be 3.11.x for the embeddable runtime. Received $PythonVersion."
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -36,7 +43,8 @@ if (Test-Path $stagingDir) {
 
 New-Item -ItemType Directory -Path $runtimeDir | Out-Null
 New-Item -ItemType Directory -Path $appDir | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $appDir "data\dbf") -Force | Out-Null
+$dbfDir = Join-Path $appDir "data\dbf"
+New-Item -ItemType Directory -Path $dbfDir -Force | Out-Null
 
 $pythonZip = Join-Path $buildDir "python-embed.zip"
 $pythonUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-$Architecture.zip"
@@ -106,13 +114,21 @@ if not exist "%PYTHON_EXE%" (
 
 set "DBF_DIR=%APP_DIR%\data\dbf"
 if not exist "%DBF_DIR%" mkdir "%DBF_DIR%"
+set "SAI_DBF_DIR=%DBF_DIR%"
+echo DBF dir: %SAI_DBF_DIR%
 
-set "HAS_DBF="
-for /f %%A in ('dir /b "%DBF_DIR%\*.dbf" 2^>nul') do set "HAS_DBF=1"
-if not defined HAS_DBF (
+set "DBF_COUNT=0"
+for /f %%A in ('dir /b "%DBF_DIR%\*.dbf" 2^>nul') do set /a DBF_COUNT+=1
+if !DBF_COUNT! LSS 1 (
   echo Generating mock DBF data...
   pushd "%APP_DIR%" >nul
   "%PYTHON_EXE%" "%APP_DIR%\generate_dbfs.py"
+  if errorlevel 1 (
+    echo Failed to generate DBF data.
+    popd >nul
+    pause
+    exit /b 1
+  )
   popd >nul
 )
 
@@ -147,4 +163,20 @@ popd >nul
 endlocal
 "@ | Set-Content -Path $startDemoPath -Encoding ASCII
 
+if (-not (Test-Path $startDemoPath)) {
+    throw "StartDemo.cmd was not created in staging."
+}
+if (-not (Test-Path $dbfDir)) {
+    throw "DBF directory missing at $dbfDir."
+}
+$pipExe = Join-Path $runtimeDir "Scripts\\pip.exe"
+if (-not (Test-Path $pipExe)) {
+    throw "pip was not installed into the embedded runtime."
+}
+& (Join-Path $runtimeDir "python.exe") -m pip show streamlit *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw "Streamlit was not installed into the embedded runtime."
+}
+
 Write-Host "Staging folder ready at $stagingDir"
+Write-Host "Run command: $(Join-Path $stagingDir "StartDemo.cmd")"

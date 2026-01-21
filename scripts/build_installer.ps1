@@ -1,22 +1,27 @@
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$installerScript = Join-Path $repoRoot "build\installer.iss"
+$buildScript = Join-Path $repoRoot "scripts\build_staging.ps1"
+$stagingDir = Join-Path $repoRoot "build\staging"
+$distDir = Join-Path $repoRoot "dist"
 
-if (-not (Test-Path $installerScript)) {
-    throw "Installer script not found at $installerScript"
+Write-Host "Building staging folder..."
+& powershell -NoProfile -ExecutionPolicy Bypass -File $buildScript
+
+if (-not (Test-Path $stagingDir)) {
+    throw "Staging folder was not created at $stagingDir"
 }
 
-$possiblePaths = @(
-    $env:INNO_SETUP_PATH,
-    "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe",
-    "C:\\Program Files\\Inno Setup 6\\ISCC.exe"
-) | Where-Object { $_ -and (Test-Path $_) }
-
-if ($possiblePaths.Count -eq 0) {
-    throw "ISCC.exe not found. Set INNO_SETUP_PATH or install Inno Setup 6."
+if (-not (Test-Path $distDir)) {
+    New-Item -ItemType Directory -Path $distDir | Out-Null
 }
 
-$iscc = $possiblePaths[0]
-Write-Host "Using Inno Setup Compiler: $iscc"
-& $iscc $installerScript
+$zipPath = Join-Path $distDir "DBF-SAI-Alpha-Demo-Portable.zip"
+if (Test-Path $zipPath) {
+    Remove-Item -Path $zipPath -Force
+}
+
+Write-Host "Creating portable ZIP at $zipPath"
+Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipPath -Force
+
+Write-Host "Portable ZIP ready: $zipPath"

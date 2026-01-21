@@ -7,7 +7,7 @@ import streamlit as st
 
 from sai_alpha.etl import DataBundle, enrich_sales, filter_sales, load_data, resolve_dbf_dir
 
-DATA_DIR = resolve_dbf_dir(Path.cwd() / "data" / "dbf")
+DATA_DIR = resolve_dbf_dir()
 EXPORT_DIR = Path("data/exports")
 
 

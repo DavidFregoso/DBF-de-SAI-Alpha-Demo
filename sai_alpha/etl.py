@@ -25,10 +25,12 @@ def _read_dbf_to_df(path: Path) -> pd.DataFrame:
 
 
 def resolve_dbf_dir(default_dir: Path | None = None) -> Path:
+    env_value = os.getenv("SAI_ALPHA_DBF_DIR")
+    if env_value:
+        return Path(env_value)
     if default_dir is None:
-        default_dir = Path.cwd() / "data" / "dbf"
-    env_value = os.getenv("SAI_DBF_DIR")
-    return Path(env_value) if env_value else default_dir
+        default_dir = Path("data") / "dbf"
+    return default_dir
 
 
 def load_data(dbf_dir: Path) -> DataBundle:

@@ -50,7 +50,23 @@ $pythonZip = Join-Path $buildDir "python-embed.zip"
 $pythonUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-$Architecture.zip"
 
 Write-Host "Downloading Python embeddable runtime from $pythonUrl"
-Invoke-WebRequest -Uri $pythonUrl -OutFile $pythonZip
+try {
+    Invoke-WebRequest -Uri $pythonUrl -OutFile $pythonZip -ErrorAction Stop
+} catch {
+    $fallbackVersion = "3.11.9"
+    if ($PythonVersion -ne $fallbackVersion) {
+        $fallbackUrl = "https://www.python.org/ftp/python/$fallbackVersion/python-$fallbackVersion-embed-$Architecture.zip"
+        Write-Warning "Failed to download $pythonUrl. Falling back to $fallbackUrl"
+        try {
+            Invoke-WebRequest -Uri $fallbackUrl -OutFile $pythonZip -ErrorAction Stop
+            $PythonVersion = $fallbackVersion
+        } catch {
+            throw "Failed to download embeddable Python from $pythonUrl or fallback $fallbackUrl."
+        }
+    } else {
+        throw "Failed to download embeddable Python from $pythonUrl."
+    }
+}
 
 Write-Host "Extracting Python runtime to $runtimeDir"
 Expand-Archive -Path $pythonZip -DestinationPath $runtimeDir -Force
@@ -66,8 +82,8 @@ if (-not (Test-Path $pthFile)) {
 Write-Host "Patching embedded Python path file at $pthFile"
 $updatedContent = @(
     "python$pyMajorMinor.zip",
-    "..\\app",
-    "Lib\\site-packages",
+    "..\app",
+    "Lib\site-packages",
     "import site"
 )
 
@@ -110,14 +126,15 @@ if not exist "%PYTHON_EXE%" (
 
 set "DBF_DIR=%APP_DIR%\data\dbf"
 if not exist "%DBF_DIR%" mkdir "%DBF_DIR%"
-set "SAI_DBF_DIR=%DBF_DIR%"
-echo DBF dir: %SAI_DBF_DIR%
+set "SAI_ALPHA_DBF_DIR=%DBF_DIR%"
+echo DBF dir: %SAI_ALPHA_DBF_DIR%
+
+pushd "%APP_DIR%" >nul
 
 set "DBF_COUNT=0"
 for /f %%A in ('dir /b "%DBF_DIR%\*.dbf" 2^>nul') do set /a DBF_COUNT+=1
 if !DBF_COUNT! LSS 1 (
   echo Generating mock DBF data...
-  pushd "%APP_DIR%" >nul
   "%PYTHON_EXE%" "generate_dbfs.py"
   if errorlevel 1 (
     echo Failed to generate DBF data.
@@ -125,7 +142,6 @@ if !DBF_COUNT! LSS 1 (
     pause
     exit /b 1
   )
-  popd >nul
 )
 
 set "PORT="
@@ -152,7 +168,6 @@ echo Starting Streamlit on http://127.0.0.1:%PORT%
 echo LAN access: http://%LAN_IP%:%PORT%
 start "" "http://127.0.0.1:%PORT%"
 
-pushd "%APP_DIR%" >nul
 "%PYTHON_EXE%" -m streamlit run "app.py" --server.address 0.0.0.0 --server.port %PORT%
 popd >nul
 

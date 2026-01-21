@@ -1,7 +1,7 @@
 streamlit==1.36.0
-pandas==2.2.2
+pandas==2.2.3
 numpy==1.26.4
-dbf==0.99.9
 dbfread==2.0.7
+dbf==0.99.9
 openpyxl==3.1.5
-plotly==5.24.1
+plotly==5.23.0

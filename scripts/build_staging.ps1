@@ -63,10 +63,11 @@ if (-not (Test-Path $pthFile)) {
     throw "Unable to locate $pthFile in embedded runtime."
 }
 
+Write-Host "Patching embedded Python path file at $pthFile"
 $updatedContent = @(
     "python$pyMajorMinor.zip",
-    "..\app",
-    "Lib\site-packages",
+    "..\\app",
+    "Lib\\site-packages",
     "import site"
 )
 

@@ -65,6 +65,7 @@ if (-not (Test-Path $pthFile)) {
 
 $pthContent = Get-Content $pthFile
 $updatedContent = @()
+
 foreach ($line in $pthContent) {
     if ($line -match "^#\s*import site") {
         $updatedContent += "import site"
@@ -72,9 +73,17 @@ foreach ($line in $pthContent) {
         $updatedContent += $line
     }
 }
-if (-not ($updatedContent -contains "Lib\\site-packages")) {
-    $updatedContent += "Lib\\site-packages"
+
+# Add current directory to sys.path so the staged app package can be imported
+if (-not ($updatedContent -contains ".")) {
+    $updatedContent = @(".",) + $updatedContent
 }
+
+# Ensure site-packages is available
+if (-not ($updatedContent -contains "Lib\site-packages")) {
+    $updatedContent += "Lib\site-packages"
+}
+
 $updatedContent | Set-Content -Path $pthFile -Encoding ASCII
 
 $getPip = Join-Path $buildDir "get-pip.py"

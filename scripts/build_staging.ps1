@@ -131,7 +131,7 @@ for /f %%A in ('dir /b "%DBF_DIR%\*.dbf" 2^>nul') do set /a DBF_COUNT+=1
 if !DBF_COUNT! LSS 1 (
   echo Generating mock DBF data...
   pushd "%APP_DIR%" >nul
-  "%PYTHON_EXE%" "%APP_DIR%\generate_dbfs.py"
+  "%PYTHON_EXE%" "generate_dbfs.py"
   if errorlevel 1 (
     echo Failed to generate DBF data.
     popd >nul
@@ -166,7 +166,7 @@ echo LAN access: http://%LAN_IP%:%PORT%
 start "" "http://127.0.0.1:%PORT%"
 
 pushd "%APP_DIR%" >nul
-"%PYTHON_EXE%" -m streamlit run "%APP_DIR%\app.py" --server.address 0.0.0.0 --server.port %PORT%
+"%PYTHON_EXE%" -m streamlit run "app.py" --server.address 0.0.0.0 --server.port %PORT%
 popd >nul
 
 endlocal

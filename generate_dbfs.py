@@ -5,7 +5,8 @@ from sai_alpha.mock_data import generate_dbf_dataset
 
 
 if __name__ == "__main__":
-    output_dir = resolve_dbf_dir(Path.cwd() / "data" / "dbf")
+    output_dir = resolve_dbf_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
     paths = generate_dbf_dataset(output_dir)
     print("DBF mock data generated:")
     for name, path in paths.items():

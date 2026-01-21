@@ -12,8 +12,7 @@ from sai_alpha.etl import enrich_sales, filter_sales, load_data, resolve_dbf_dir
 from sai_alpha.mock_data import generate_dbf_dataset
 
 
-DEFAULT_DBF_DIR = Path(__file__).resolve().parent / "data" / "dbf"
-DBF_DIR = resolve_dbf_dir(DEFAULT_DBF_DIR)
+DBF_DIR = resolve_dbf_dir()
 USD_RATE = 17.0
 REQUIRED_DBF_FILES = ("ventas.dbf", "productos.dbf", "clientes.dbf", "vendedores.dbf")
 

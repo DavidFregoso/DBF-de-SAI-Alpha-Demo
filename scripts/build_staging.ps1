@@ -132,11 +132,16 @@ if not defined PORT (
   exit /b 1
 )
 
+set "LAN_IP="
+for /f %%A in ('powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '169.254*' -and $_.IPAddress -ne '127.0.0.1' } | Select-Object -First 1 -ExpandProperty IPAddress)"') do set "LAN_IP=%%A"
+if not defined LAN_IP set "LAN_IP=127.0.0.1"
+
 echo Starting Streamlit on http://127.0.0.1:%PORT%
+echo LAN access: http://%LAN_IP%:%PORT%
 start "" "http://127.0.0.1:%PORT%"
 
 pushd "%APP_DIR%" >nul
-"%PYTHON_EXE%" -m streamlit run "%APP_DIR%\app.py" --server.address 127.0.0.1 --server.port %PORT%
+"%PYTHON_EXE%" -m streamlit run "%APP_DIR%\app.py" --server.address 0.0.0.0 --server.port %PORT%
 popd >nul
 
 endlocal

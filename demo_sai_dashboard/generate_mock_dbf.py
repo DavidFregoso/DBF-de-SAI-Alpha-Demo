@@ -9,7 +9,6 @@ import dbf
 BRANDS = ["Andes", "Pacifica", "Sierra", "Aurora", "Delta"]
 CATEGORIES = ["Bebidas", "Limpieza", "Snacks", "Hogar", "Cuidado Personal"]
 CLIENT_ORIGINS = ["Tradicional", "Moderno", "Digital", "Mayoreo"]
-REGIONS = ["Norte", "Centro", "Sur", "Occidente", "Oriente"]
 
 PRODUCT_NAMES = {
     "Bebidas": ["Agua Mineral", "Jugo Natural", "Refresco Cola", "Té Frío"],
@@ -55,6 +54,12 @@ def _date_range(days: int) -> list[date]:
     return [today - timedelta(days=delta) for delta in range(days)]
 
 
+def _currency_fx(usd_ratio: float) -> tuple[str, float]:
+    if random.random() < usd_ratio:
+        return "USD", round(random.uniform(16.5, 18.8), 2)
+    return "MXN", 1.0
+
+
 def _write_dbf(path: Path, schema: str, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -66,155 +71,226 @@ def _write_dbf(path: Path, schema: str, rows: list[dict]) -> None:
     table.close()
 
 
-def generate_productos(count: int = 80) -> list[dict]:
+def generate_products(count: int = 300) -> list[dict]:
     productos = []
     for idx in range(1, count + 1):
         category = random.choice(CATEGORIES)
         brand = random.choice(BRANDS)
         name = random.choice(PRODUCT_NAMES[category])
-        base_price = round(random.uniform(8, 150), 2)
-        stock_units = random.randint(50, 400)
+        price = round(random.uniform(8, 150), 2)
         productos.append(
             {
-                "PRODUCT_ID": idx,
-                "SKU": f"SKU{idx:05d}",
-                "PRODUCT_NAME": f"{name} {brand}",
-                "CATEGORY": category,
+                "PROD_ID": idx,
+                "PROD_NAME": f"{name} {brand}",
                 "BRAND": brand,
-                "BASE_PRICE": base_price,
-                "STOCK_UNITS": stock_units,
+                "CATEGORY": category,
+                "PRICE": price,
             }
         )
     return productos
 
 
-def generate_clientes(count: int = 60) -> list[dict]:
+def generate_clients(count: int = 150) -> list[dict]:
     clientes = []
     for idx in range(1, count + 1):
         clientes.append(
             {
-                "CLIENT_ID": idx,
-                "CLIENT_NAME": _random_company(),
+                "CL_ID": idx,
+                "CL_NAME": _random_company(),
                 "ORIGIN": random.choice(CLIENT_ORIGINS),
-                "REGION": random.choice(REGIONS),
-                "CONTACT": _random_name(),
             }
         )
     return clientes
 
 
-def generate_vendedores(count: int = 14) -> list[dict]:
+def generate_sellers(count: int = 10) -> list[dict]:
     vendedores = []
     for idx in range(1, count + 1):
         vendedores.append(
             {
-                "VENDOR_ID": idx,
-                "VENDOR_NAME": _random_name(),
-                "REGION": random.choice(REGIONS),
-                "TEAM": random.choice(["A", "B", "C"]),
+                "SELLER_ID": idx,
+                "SELLER_NAME": _random_name(),
             }
         )
     return vendedores
 
 
-def generate_ventas(
+def generate_stock(productos: list[dict]) -> list[dict]:
+    stock = []
+    for producto in productos:
+        stock.append({"PROD_ID": producto["PROD_ID"], "ON_HAND": random.randint(15, 600)})
+    return stock
+
+
+def generate_invoices(
     productos: list[dict],
     clientes: list[dict],
     vendedores: list[dict],
-    days: int = 200,
-    max_daily_sales: int = 45,
-) -> list[dict]:
-    ventas = []
-    sale_id = 1
-    for sale_date in _date_range(days):
-        daily_sales = random.randint(12, max_daily_sales)
-        for _ in range(daily_sales):
-            product = random.choice(productos)
-            client = random.choice(clientes)
-            vendor = random.choice(vendedores)
-            quantity = random.randint(1, 14)
-            currency = random.choice(["MXN", "USD"])
-            fx_rate = 17.5 if currency == "USD" else 1.0
-            unit_price = round(product["BASE_PRICE"] * random.uniform(0.9, 1.2), 2)
-            total_mxn = round(quantity * unit_price * fx_rate, 2)
-            total_usd = round(total_mxn / 17.5, 2)
-            ventas.append(
-                {
-                    "SALE_ID": sale_id,
-                    "SALE_DATE": sale_date,
-                    "PRODUCT_ID": product["PRODUCT_ID"],
-                    "CLIENT_ID": client["CLIENT_ID"],
-                    "VENDOR_ID": vendor["VENDOR_ID"],
-                    "BRAND": product["BRAND"],
-                    "CATEGORY": product["CATEGORY"],
-                    "ORIGIN": client["ORIGIN"],
-                    "QUANTITY": quantity,
-                    "CURRENCY": currency,
-                    "TOTAL_MXN": total_mxn,
-                    "TOTAL_USD": total_usd,
-                }
-            )
-            sale_id += 1
-    return ventas
+    count: int = 1000,
+    days: int = 120,
+    usd_ratio: float = 0.2,
+) -> tuple[list[dict], list[dict], dict[int, float]]:
+    invoices = []
+    invoice_lines = []
+    totals_by_invoice: dict[int, float] = {}
+    dates = _date_range(days)
 
-
-def generate_pedidos(ventas: list[dict]) -> list[dict]:
-    pedidos = []
-    pedido_id = 1
-    for venta in random.sample(ventas, k=min(len(ventas), 300)):
-        status = random.choice(["PENDIENTE", "PARCIAL", "SURTIDO"])
-        if status == "SURTIDO":
-            continue
-        pedidos.append(
+    for inv_id in range(1, count + 1):
+        inv_date = random.choice(dates)
+        client = random.choice(clientes)
+        seller = random.choice(vendedores)
+        currency, fx = _currency_fx(usd_ratio)
+        invoices.append(
             {
-                "PEDIDO_ID": pedido_id,
-                "SALE_ID": venta["SALE_ID"],
-                "CLIENT_ID": venta["CLIENT_ID"],
-                "VENDOR_ID": venta["VENDOR_ID"],
-                "PEDIDO_DATE": venta["SALE_DATE"],
-                "STATUS": status,
-                "TOTAL_MXN": venta["TOTAL_MXN"],
+                "INV_ID": inv_id,
+                "INV_DATE": inv_date,
+                "CL_ID": client["CL_ID"],
+                "SELLER_ID": seller["SELLER_ID"],
+                "CURRENCY": currency,
+                "FX": fx,
             }
         )
-        pedido_id += 1
-    return pedidos
+
+        line_count = random.randint(1, 6)
+        total = 0.0
+        for _ in range(line_count):
+            product = random.choice(productos)
+            qty = random.randint(1, 20)
+            unit_price = round(product["PRICE"] * random.uniform(0.9, 1.15), 2)
+            invoice_lines.append(
+                {
+                    "INV_ID": inv_id,
+                    "PROD_ID": product["PROD_ID"],
+                    "QTY": qty,
+                    "UNIT_PRICE": unit_price,
+                }
+            )
+            total += qty * unit_price
+        totals_by_invoice[inv_id] = round(total, 2)
+
+    return invoices, invoice_lines, totals_by_invoice
 
 
-def generate_dataset(output_dir: Path) -> None:
-    productos = generate_productos()
-    clientes = generate_clientes()
-    vendedores = generate_vendedores()
-    ventas = generate_ventas(productos, clientes, vendedores)
-    pedidos = generate_pedidos(ventas)
+def _estimate_order_total(
+    productos: list[dict],
+    line_count: int,
+) -> float:
+    total = 0.0
+    for _ in range(line_count):
+        product = random.choice(productos)
+        qty = random.randint(1, 15)
+        unit_price = round(product["PRICE"] * random.uniform(0.9, 1.1), 2)
+        total += qty * unit_price
+    return round(total, 2)
+
+
+def generate_orders(
+    productos: list[dict],
+    invoices: list[dict],
+    invoice_totals: dict[int, float],
+    count: int = 1200,
+    days: int = 120,
+    usd_ratio: float = 0.2,
+) -> list[dict]:
+    orders = []
+    dates = _date_range(days)
+    surtir_target = random.randint(int(count * 0.10), int(count * 0.25))
+    statuses = ["SURTIR"] * surtir_target + ["FACTURADO"] * (count - surtir_target)
+    random.shuffle(statuses)
+
+    for ord_id, status in enumerate(statuses, start=1):
+
+        if status == "FACTURADO":
+            invoice = random.choice(invoices)
+            inv_date = invoice["INV_DATE"]
+            ord_date = inv_date - timedelta(days=random.randint(0, 3))
+            currency = invoice["CURRENCY"]
+            fx = invoice["FX"]
+            total_estimado = invoice_totals.get(invoice["INV_ID"], 0.0)
+            cl_id = invoice["CL_ID"]
+            seller_id = invoice["SELLER_ID"]
+        else:
+            ord_date = random.choice(dates)
+            currency, fx = _currency_fx(usd_ratio)
+            total_estimado = _estimate_order_total(productos, random.randint(1, 5))
+            cl_id = random.choice(invoices)["CL_ID"]
+            seller_id = random.choice(invoices)["SELLER_ID"]
+
+        orders.append(
+            {
+                "ORD_ID": ord_id,
+                "ORD_DATE": ord_date,
+                "CL_ID": cl_id,
+                "SELLER_ID": seller_id,
+                "STATUS": status,
+                "CURRENCY": currency,
+                "FX": fx,
+                "TOTAL_ESTIMADO": total_estimado,
+            }
+        )
+
+    return orders
+
+
+def generate_dataset(output_dir: Path) -> list[tuple[str, int]]:
+    productos = generate_products()
+    clientes = generate_clients()
+    vendedores = generate_sellers()
+    stock = generate_stock(productos)
+    invoices, invoice_lines, invoice_totals = generate_invoices(productos, clientes, vendedores)
+    pedidos = generate_orders(productos, invoices, invoice_totals)
 
     _write_dbf(
-        output_dir / "PRODUCTOS.DBF",
-        "PRODUCT_ID N(6,0); SKU C(12); PRODUCT_NAME C(60); CATEGORY C(30); BRAND C(20); BASE_PRICE N(10,2); STOCK_UNITS N(8,0)",
+        output_dir / "PRODUCTS.DBF",
+        "PROD_ID N(6,0); PROD_NAME C(60); BRAND C(20); CATEGORY C(30); PRICE N(12,2)",
         productos,
     )
     _write_dbf(
-        output_dir / "CLIENTES.DBF",
-        "CLIENT_ID N(6,0); CLIENT_NAME C(60); ORIGIN C(20); REGION C(20); CONTACT C(40)",
+        output_dir / "CLIENTS.DBF",
+        "CL_ID N(6,0); CL_NAME C(60); ORIGIN C(20)",
         clientes,
     )
     _write_dbf(
-        output_dir / "VENDEDORES.DBF",
-        "VENDOR_ID N(6,0); VENDOR_NAME C(40); REGION C(20); TEAM C(5)",
+        output_dir / "SELLERS.DBF",
+        "SELLER_ID N(6,0); SELLER_NAME C(40)",
         vendedores,
     )
     _write_dbf(
-        output_dir / "VENTAS.DBF",
-        "SALE_ID N(8,0); SALE_DATE D; PRODUCT_ID N(6,0); CLIENT_ID N(6,0); VENDOR_ID N(6,0); BRAND C(20); CATEGORY C(30); ORIGIN C(20); QUANTITY N(6,0); CURRENCY C(5); TOTAL_MXN N(12,2); TOTAL_USD N(12,2)",
-        ventas,
+        output_dir / "STOCK.DBF",
+        "PROD_ID N(6,0); ON_HAND N(8,0)",
+        stock,
+    )
+    _write_dbf(
+        output_dir / "INVOICES.DBF",
+        "INV_ID N(8,0); INV_DATE D; CL_ID N(6,0); SELLER_ID N(6,0); CURRENCY C(3); FX N(6,2)",
+        invoices,
+    )
+    _write_dbf(
+        output_dir / "INVOICE_LINES.DBF",
+        "INV_ID N(8,0); PROD_ID N(6,0); QTY N(6,0); UNIT_PRICE N(12,2)",
+        invoice_lines,
     )
     _write_dbf(
         output_dir / "PEDIDOS.DBF",
-        "PEDIDO_ID N(8,0); SALE_ID N(8,0); CLIENT_ID N(6,0); VENDOR_ID N(6,0); PEDIDO_DATE D; STATUS C(12); TOTAL_MXN N(12,2)",
+        "ORD_ID N(8,0); ORD_DATE D; CL_ID N(6,0); SELLER_ID N(6,0); STATUS C(12); CURRENCY C(3); FX N(6,2); TOTAL_ESTIMADO N(12,2)",
         pedidos,
     )
+
+    return [
+        ("PRODUCTS.DBF", len(productos)),
+        ("CLIENTS.DBF", len(clientes)),
+        ("SELLERS.DBF", len(vendedores)),
+        ("STOCK.DBF", len(stock)),
+        ("INVOICES.DBF", len(invoices)),
+        ("INVOICE_LINES.DBF", len(invoice_lines)),
+        ("PEDIDOS.DBF", len(pedidos)),
+    ]
 
 
 if __name__ == "__main__":
     dbf_dir = Path("dbf")
-    generate_dataset(dbf_dir)
+    summary = generate_dataset(dbf_dir)
     print(f"DBF mock generado en: {dbf_dir.resolve()}")
+    print("Resumen de archivos generados:")
+    for name, count in summary:
+        print(f"- {name}: {count} registros")

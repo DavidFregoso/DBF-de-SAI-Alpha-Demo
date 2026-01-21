@@ -63,31 +63,12 @@ if (-not (Test-Path $pthFile)) {
     throw "Unable to locate $pthFile in embedded runtime."
 }
 
-$pthContent = Get-Content $pthFile
-$updatedContent = @()
-
-foreach ($line in $pthContent) {
-    if ($line -match "^#\s*import site") {
-        $updatedContent += "import site"
-    } else {
-        $updatedContent += $line
-    }
-}
-
-$updatedContent = $updatedContent | Where-Object { $_ -ne "." }
-
-# Add current directory to sys.path as the first entry
-$updatedContent = @(".",) + $updatedContent
-
-# Ensure import site is enabled
-if (-not ($updatedContent -contains "import site")) {
-    $updatedContent += "import site"
-}
-
-# Ensure site-packages is available
-if (-not ($updatedContent -contains "Lib\site-packages")) {
-    $updatedContent += "Lib\site-packages"
-}
+$updatedContent = @(
+    "python$pyMajorMinor.zip",
+    "..\app",
+    "Lib\site-packages",
+    "import site"
+)
 
 $updatedContent | Set-Content -Path $pthFile -Encoding ASCII
 

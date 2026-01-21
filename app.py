@@ -8,16 +8,19 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from sai_alpha.etl import enrich_sales, filter_sales, load_data
+from sai_alpha.etl import enrich_sales, filter_sales, load_data, resolve_dbf_dir
+from sai_alpha.mock_data import generate_dbf_dataset
 
 
-DATA_DIR = Path("data/dbf")
+DEFAULT_DBF_DIR = Path(__file__).resolve().parent / "data" / "dbf"
+DBF_DIR = resolve_dbf_dir(DEFAULT_DBF_DIR)
 USD_RATE = 17.0
+REQUIRED_DBF_FILES = ("ventas.dbf", "productos.dbf", "clientes.dbf", "vendedores.dbf")
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_bundle() -> dict[str, pd.DataFrame]:
-    bundle = load_data(DATA_DIR)
+def load_bundle(dbf_dir: Path) -> dict[str, pd.DataFrame]:
+    bundle = load_data(dbf_dir)
     return {
         "ventas": bundle.ventas,
         "productos": bundle.productos,
@@ -27,8 +30,8 @@ def load_bundle() -> dict[str, pd.DataFrame]:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_sales() -> pd.DataFrame:
-    bundle = load_data(DATA_DIR)
+def load_sales(dbf_dir: Path) -> pd.DataFrame:
+    bundle = load_data(dbf_dir)
     return enrich_sales(bundle)
 
 
@@ -377,13 +380,67 @@ def render_productos(ventas: pd.DataFrame, productos: pd.DataFrame, filters: dic
         )
 
 
+def _get_dbf_files(dbf_dir: Path) -> list[Path]:
+    if not dbf_dir.exists():
+        return []
+    return sorted(dbf_dir.glob("*.dbf"))
+
+
+def _generate_dbfs(dbf_dir: Path) -> None:
+    generate_dbf_dataset(dbf_dir)
+
+
+def _get_missing_dbfs(dbf_dir: Path) -> list[str]:
+    return [name for name in REQUIRED_DBF_FILES if not (dbf_dir / name).exists()]
+
+
 def main() -> None:
     st.set_page_config(page_title="SAI Alpha Dashboard", page_icon="📊", layout="wide")
     st.title("Dashboard Ejecutivo y Operativo - SAI Alpha")
     st.caption("Vista integrada de ventas, clientes y productos")
 
-    ventas = load_sales()
-    bundle = load_bundle()
+    dbf_dir = DBF_DIR
+    dbf_dir.mkdir(parents=True, exist_ok=True)
+    dbf_files = _get_dbf_files(dbf_dir)
+    missing_dbfs = _get_missing_dbfs(dbf_dir)
+    generation_error: str | None = None
+    auto_generated = False
+
+    if missing_dbfs:
+        with st.spinner("Generando datos mock..."):
+            try:
+                _generate_dbfs(dbf_dir)
+                auto_generated = True
+            except Exception as exc:  # noqa: BLE001
+                generation_error = str(exc)
+        dbf_files = _get_dbf_files(dbf_dir)
+        missing_dbfs = _get_missing_dbfs(dbf_dir)
+
+    if generation_error:
+        st.error(f"No se pudieron generar los DBF automáticamente: {generation_error}")
+    elif auto_generated:
+        st.success("Datos mock generados automáticamente.")
+
+    if not missing_dbfs:
+        st.info(f"DBF dir: {dbf_dir}\nDBF files: {len(dbf_files)}")
+    else:
+        missing_list = ", ".join(missing_dbfs)
+        st.warning(
+            f"No se encontraron todos los DBF requeridos.\nDBF dir: {dbf_dir}\nFaltantes: {missing_list}"
+        )
+        if st.button("Generar datos mock"):
+            with st.spinner("Generando datos mock..."):
+                try:
+                    _generate_dbfs(dbf_dir)
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"No se pudieron generar los DBF: {exc}")
+                else:
+                    st.success("Datos mock generados.")
+                    st.rerun()
+        st.stop()
+
+    ventas = load_sales(dbf_dir)
+    bundle = load_bundle(dbf_dir)
 
     if ventas.empty:
         st.error("No hay datos disponibles. Ejecuta generate_dbfs.py para crear data DBF.")

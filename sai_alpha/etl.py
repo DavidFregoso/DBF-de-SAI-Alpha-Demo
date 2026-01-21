@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,11 +24,24 @@ def _read_dbf_to_df(path: Path) -> pd.DataFrame:
     return df
 
 
+def resolve_dbf_dir(default_dir: Path | None = None) -> Path:
+    if default_dir is None:
+        default_dir = Path.cwd() / "data" / "dbf"
+    env_value = os.getenv("SAI_DBF_DIR")
+    return Path(env_value) if env_value else default_dir
+
+
 def load_data(dbf_dir: Path) -> DataBundle:
     ventas = _read_dbf_to_df(dbf_dir / "ventas.dbf")
-    productos = _read_dbf_to_df(dbf_dir / "productos.dbf")
-    clientes = _read_dbf_to_df(dbf_dir / "clientes.dbf")
-    vendedores = _read_dbf_to_df(dbf_dir / "vendedores.dbf")
+    productos = _read_dbf_to_df(dbf_dir / "productos.dbf").rename(
+        columns={"PROD_NAME": "PRODUCT_NAME"}, errors="ignore"
+    )
+    clientes = _read_dbf_to_df(dbf_dir / "clientes.dbf").rename(
+        columns={"CLNT_NAME": "CLIENT_NAME"}, errors="ignore"
+    )
+    vendedores = _read_dbf_to_df(dbf_dir / "vendedores.dbf").rename(
+        columns={"VEND_NAME": "VENDOR_NAME"}, errors="ignore"
+    )
 
     return DataBundle(ventas=ventas, productos=productos, clientes=clientes, vendedores=vendedores)
 

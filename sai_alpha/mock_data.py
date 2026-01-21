@@ -69,7 +69,7 @@ def generate_products(count: int = 60) -> list[dict]:
             {
                 "PRODUCT_ID": idx,
                 "SKU": f"SKU{idx:04d}",
-                "PRODUCT_NAME": f"{name} {brand}",
+                "PROD_NAME": f"{name} {brand}",
                 "CATEGORY": category,
                 "BRAND": brand,
                 "BASE_PRICE": price,
@@ -84,7 +84,7 @@ def generate_clients(count: int = 45) -> list[dict]:
         clients.append(
             {
                 "CLIENT_ID": idx,
-                "CLIENT_NAME": _random_company(),
+                "CLNT_NAME": _random_company(),
                 "REGION": random.choice(REGIONS),
                 "CHANNEL": random.choice(CHANNELS),
                 "CONTACT": _random_name(),
@@ -99,7 +99,7 @@ def generate_vendors(count: int = 12) -> list[dict]:
         vendors.append(
             {
                 "VENDOR_ID": idx,
-                "VENDOR_NAME": _random_name(),
+                "VEND_NAME": _random_name(),
                 "REGION": random.choice(REGIONS),
                 "TEAM": random.choice(["A", "B", "C"]),
             }
@@ -149,7 +149,7 @@ def _write_dbf(path: Path, schema: str, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         path.unlink()
-    table = dbf.Table(str(path), schema)
+    table = dbf.Table(str(path), schema, dbf_type="vfp", codepage="cp1252")
     table.open(mode=dbf.READ_WRITE)
     for row in rows:
         table.append(row)
@@ -165,17 +165,17 @@ def generate_dbf_dataset(output_dir: Path) -> dict[str, Path]:
 
     _write_dbf(
         output_dir / "productos.dbf",
-        "PRODUCT_ID N(6,0); SKU C(10); PRODUCT_NAME C(60); CATEGORY C(30); BRAND C(30); BASE_PRICE N(10,2)",
+        "PRODUCT_ID N(6,0); SKU C(10); PROD_NAME C(60); CATEGORY C(30); BRAND C(30); BASE_PRICE N(10,2)",
         products,
     )
     _write_dbf(
         output_dir / "clientes.dbf",
-        "CLIENT_ID N(6,0); CLIENT_NAME C(60); REGION C(20); CHANNEL C(20); CONTACT C(40)",
+        "CLIENT_ID N(6,0); CLNT_NAME C(60); REGION C(20); CHANNEL C(20); CONTACT C(40)",
         clients,
     )
     _write_dbf(
         output_dir / "vendedores.dbf",
-        "VENDOR_ID N(6,0); VENDOR_NAME C(40); REGION C(20); TEAM C(5)",
+        "VENDOR_ID N(6,0); VEND_NAME C(40); REGION C(20); TEAM C(5)",
         vendors,
     )
     _write_dbf(

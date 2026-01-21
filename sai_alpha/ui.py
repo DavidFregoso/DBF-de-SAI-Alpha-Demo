@@ -5,9 +5,9 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from sai_alpha.etl import DataBundle, enrich_sales, filter_sales, load_data
+from sai_alpha.etl import DataBundle, enrich_sales, filter_sales, load_data, resolve_dbf_dir
 
-DATA_DIR = Path("data/dbf")
+DATA_DIR = resolve_dbf_dir(Path.cwd() / "data" / "dbf")
 EXPORT_DIR = Path("data/exports")
 
 

@@ -1,0 +1,126 @@
+param(
+    [string]$PythonVersion = "3.11.9",
+    [string]$Architecture = "amd64"
+)
+
+$ErrorActionPreference = "Stop"
+
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$buildDir = Join-Path $repoRoot "build"
+$stagingDir = Join-Path $buildDir "staging"
+$runtimeDir = Join-Path $stagingDir "runtime"
+$appDir = Join-Path $stagingDir "app"
+
+if (Test-Path $stagingDir) {
+    Remove-Item -Path $stagingDir -Recurse -Force
+}
+
+New-Item -ItemType Directory -Path $runtimeDir | Out-Null
+New-Item -ItemType Directory -Path $appDir | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $appDir "data\dbf") -Force | Out-Null
+
+$pythonZip = Join-Path $buildDir "python-embed.zip"
+$pythonUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-$Architecture.zip"
+
+Write-Host "Downloading Python embeddable runtime from $pythonUrl"
+Invoke-WebRequest -Uri $pythonUrl -OutFile $pythonZip
+
+Write-Host "Extracting Python runtime to $runtimeDir"
+Expand-Archive -Path $pythonZip -DestinationPath $runtimeDir -Force
+
+$versionParts = $PythonVersion.Split(".")
+$pyMajorMinor = "{0}{1}" -f $versionParts[0], $versionParts[1]
+$pthFile = Join-Path $runtimeDir ("python{0}._pth" -f $pyMajorMinor)
+
+if (-not (Test-Path $pthFile)) {
+    throw "Unable to locate $pthFile in embedded runtime."
+}
+
+$pthContent = Get-Content $pthFile
+$updatedContent = @()
+foreach ($line in $pthContent) {
+    if ($line -match "^#\s*import site") {
+        $updatedContent += "import site"
+    } else {
+        $updatedContent += $line
+    }
+}
+if (-not ($updatedContent -contains "Lib\\site-packages")) {
+    $updatedContent += "Lib\\site-packages"
+}
+$updatedContent | Set-Content -Path $pthFile -Encoding ASCII
+
+$getPip = Join-Path $buildDir "get-pip.py"
+Write-Host "Downloading get-pip.py"
+Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip
+
+Write-Host "Installing pip into embedded runtime"
+& (Join-Path $runtimeDir "python.exe") $getPip --no-warn-script-location
+
+Write-Host "Installing Python dependencies"
+& (Join-Path $runtimeDir "python.exe") -m pip install --no-cache-dir -r (Join-Path $repoRoot "requirements.txt")
+
+Write-Host "Copying app files"
+Copy-Item -Path (Join-Path $repoRoot "app.py") -Destination (Join-Path $appDir "app.py")
+Copy-Item -Path (Join-Path $repoRoot "generate_dbfs.py") -Destination (Join-Path $appDir "generate_dbfs.py")
+Copy-Item -Path (Join-Path $repoRoot "sai_alpha") -Destination (Join-Path $appDir "sai_alpha") -Recurse
+if (Test-Path (Join-Path $repoRoot "pages")) {
+    Copy-Item -Path (Join-Path $repoRoot "pages") -Destination (Join-Path $appDir "pages") -Recurse
+}
+
+$startDemoPath = Join-Path $stagingDir "StartDemo.cmd"
+@"
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
+
+set "SCRIPT_DIR=%~dp0"
+set "RUNTIME_DIR=%SCRIPT_DIR%runtime"
+set "APP_DIR=%SCRIPT_DIR%app"
+set "PYTHON_EXE=%RUNTIME_DIR%\python.exe"
+
+if not exist "%PYTHON_EXE%" (
+  echo Embedded Python not found at %PYTHON_EXE%.
+  echo Please reinstall the demo.
+  pause
+  exit /b 1
+)
+
+set "DBF_DIR=%APP_DIR%\data\dbf"
+if not exist "%DBF_DIR%" mkdir "%DBF_DIR%"
+
+set "HAS_DBF="
+for /f %%A in ('dir /b "%DBF_DIR%\*.dbf" 2^>nul') do set "HAS_DBF=1"
+if not defined HAS_DBF (
+  echo Generating mock DBF data...
+  pushd "%APP_DIR%" >nul
+  "%PYTHON_EXE%" "%APP_DIR%\generate_dbfs.py"
+  popd >nul
+)
+
+set "PORT="
+for /l %%P in (8501,1,8510) do (
+  for /f %%A in ('powershell -NoProfile -Command "Test-NetConnection -ComputerName 127.0.0.1 -Port %%P -InformationLevel Quiet"') do set "PORT_IN_USE=%%A"
+  if /i "!PORT_IN_USE!"=="False" (
+    set "PORT=%%P"
+    goto :port_found
+  )
+)
+
+:port_found
+if not defined PORT (
+  echo No free port found between 8501 and 8510.
+  pause
+  exit /b 1
+)
+
+echo Starting Streamlit on http://127.0.0.1:%PORT%
+start "" "http://127.0.0.1:%PORT%"
+
+pushd "%APP_DIR%" >nul
+"%PYTHON_EXE%" -m streamlit run "%APP_DIR%\app.py" --server.address 127.0.0.1 --server.port %PORT%
+popd >nul
+
+endlocal
+"@ | Set-Content -Path $startDemoPath -Encoding ASCII
+
+Write-Host "Staging folder ready at $stagingDir"

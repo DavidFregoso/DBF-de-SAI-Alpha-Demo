@@ -1,9 +1,28 @@
 param(
-    [string]$PythonVersion = "3.11.9",
+    [string]$PythonVersion = "3.11.14",
     [string]$Architecture = "amd64"
 )
 
 $ErrorActionPreference = "Stop"
+
+$requiredPythonVersion = "3.11.14"
+$requiredArchitecture = "64bit"
+
+$pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+if (-not $pyLauncher) {
+    throw "Python launcher (py) not found. Install Python $requiredPythonVersion x64 to build the installer."
+}
+
+$pyInfo = & py -3.11 -c "import platform, sys; print(sys.version.split()[0]); print(platform.architecture()[0])" 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $pyInfo) {
+    throw "Python 3.11 not found via 'py -3.11'. Install Python $requiredPythonVersion x64 to build the installer."
+}
+
+$pyVersion = $pyInfo[0]
+$pyArch = $pyInfo[1]
+if ($pyVersion -ne $requiredPythonVersion -or $pyArch -ne $requiredArchitecture) {
+    throw "Python $requiredPythonVersion x64 is required. Detected $pyVersion $pyArch via 'py -3.11'."
+}
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $buildDir = Join-Path $repoRoot "build"

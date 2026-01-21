@@ -8,6 +8,7 @@ This guide explains how to build a Windows installer that bundles the Streamlit 
 - Windows 10/11
 - PowerShell 5.1+ (or PowerShell 7)
 - Internet access to download the Python embeddable runtime and Python wheels
+- Python 3.11.14 x64 installed and available via `py -3.11` (builder check enforced by `build_staging.ps1`)
 - Inno Setup 6 installed (ISCC.exe)
 
 **Build the staging folder**
@@ -17,7 +18,7 @@ This guide explains how to build a Windows installer that bundles the Streamlit 
    .\scripts\build_staging.ps1
    ```
    This will:
-   - Download the Python 3.11 embeddable zip.
+   - Download the Python 3.11.14 embeddable zip.
    - Enable `site-packages` in the embedded runtime.
    - Install pip and required wheels into `build\staging\runtime`.
    - Copy the app into `build\staging\app` and create `StartDemo.cmd`.

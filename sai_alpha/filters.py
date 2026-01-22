@@ -126,8 +126,6 @@ def _ensure_latest_periods(df_sales: pd.DataFrame) -> LatestPeriods:
 
 def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
     latest = _ensure_latest_periods(df_sales)
-    st.sidebar.caption("Filtros globales")
-
     st.session_state.setdefault("period_mode", "Último periodo")
     st.session_state.setdefault("granularity", "Semanal")
     st.session_state.setdefault("currency_view", "MXN")

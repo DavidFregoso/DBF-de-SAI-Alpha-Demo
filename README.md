@@ -13,6 +13,12 @@ El generador de DBF (`generate_dbfs.py`) crea un set determinista con 3–4 año
 - Tipos de factura/orden, origen cliente/venta, moneda y tasa de cambio diaria.
 - Tabla de tipo de cambio (`tcambio.dbf`) y pedidos abiertos (`pedidos.dbf`).
 
+## Dashboard ejecutivo (Phase 1)
+La app Streamlit ahora incluye:
+- Navegación por páginas (Resumen Ejecutivo, Clientes, Vendedores, Productos & Inventario, Pedidos por Surtir, Configuración).
+- Filtros globales con presets de fecha, granularidad y vista de moneda (MXN, USD, Normalizado a MXN).
+- Exportación CSV y Excel con fallback seguro si no hay engine disponible.
+
 Para verificar rápidamente el dataset generado:
 ```bash
 python verify_dbfs.py

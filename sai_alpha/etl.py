@@ -91,7 +91,19 @@ def enrich_sales(bundle: DataBundle) -> pd.DataFrame:
         if "REVENUE_USD" not in ventas.columns and "TC_MXN_USD" in ventas.columns:
             ventas["REVENUE_USD"] = ventas["REVENUE"] / ventas["TC_MXN_USD"]
         ventas["REVENUE_MXN"] = ventas["REVENUE"]
+        if "REVENUE_USD" in ventas.columns:
+            ventas["REVENUE_USD"] = ventas["REVENUE_USD"].astype(float)
     return ventas
+
+
+def enrich_pedidos(bundle: DataBundle) -> pd.DataFrame:
+    if bundle.pedidos is None:
+        return pd.DataFrame()
+    pedidos = bundle.pedidos.copy()
+    pedidos = pedidos.merge(bundle.productos, on="PRODUCT_ID", how="left", suffixes=("", "_PROD"))
+    pedidos = pedidos.merge(bundle.clientes, on="CLIENT_ID", how="left", suffixes=("", "_CLI"))
+    pedidos = pedidos.merge(bundle.vendedores, on="VENDOR_ID", how="left", suffixes=("", "_VEND"))
+    return pedidos
 
 
 def filter_sales(

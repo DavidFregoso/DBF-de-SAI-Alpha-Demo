@@ -18,6 +18,7 @@ from sai_alpha.ui import (
     load_sales,
     normalize_currency,
     plotly_colors,
+    render_page_nav,
     render_sidebar_filters,
     table_height,
 )
@@ -25,6 +26,7 @@ from sai_alpha.ui import (
 
 st.set_page_config(page_title="Productos", page_icon="📦", layout="wide")
 apply_theme()
+render_page_nav("Productos")
 
 bundle = load_bundle()
 ventas = load_sales()
@@ -58,7 +60,10 @@ product_sales = (
 product_sales["avg_daily_units"] = product_sales["units"] / period_days
 
 inventory = bundle.productos.copy()
-inventory = inventory.merge(product_sales, on=["PRODUCT_ID", "BRAND", "CATEGORY"], how="left")
+merge_keys = ["PRODUCT_ID", "BRAND", "CATEGORY"]
+if "PRODUCT_NAME" in inventory.columns and "PRODUCT_NAME" in product_sales.columns:
+    merge_keys.append("PRODUCT_NAME")
+inventory = inventory.merge(product_sales, on=merge_keys, how="left")
 inventory["avg_daily_units"] = inventory["avg_daily_units"].fillna(0.0)
 inventory["DAYS_INVENTORY"] = inventory.apply(
     lambda row: row["STOCK_QTY"] / row["avg_daily_units"] if row["avg_daily_units"] > 0 else None,

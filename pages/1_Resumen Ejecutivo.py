@@ -18,13 +18,16 @@ from sai_alpha.ui import (
     load_sales,
     normalize_currency,
     plotly_colors,
+    render_page_nav,
     render_sidebar_filters,
     table_height,
 )
+from sai_alpha.etl import resolve_dbf_dir
 
 
 st.set_page_config(page_title="Resumen Ejecutivo", page_icon="📊", layout="wide")
 apply_theme()
+render_page_nav("Resumen Ejecutivo")
 
 bundle = load_bundle()
 ventas = load_sales()
@@ -83,7 +86,10 @@ product_sales = (
 )
 product_sales["avg_daily_units"] = product_sales["units"] / period_days
 inventory = bundle.productos.copy()
-inventory = inventory.merge(product_sales, on=["PRODUCT_ID", "BRAND", "CATEGORY"], how="left")
+merge_keys = ["PRODUCT_ID", "BRAND", "CATEGORY"]
+if "PRODUCT_NAME" in inventory.columns and "PRODUCT_NAME" in product_sales.columns:
+    merge_keys.append("PRODUCT_NAME")
+inventory = inventory.merge(product_sales, on=merge_keys, how="left")
 inventory["avg_daily_units"] = inventory["avg_daily_units"].fillna(0.0)
 inventory["DAYS_INVENTORY"] = inventory.apply(
     lambda row: row["STOCK_QTY"] / row["avg_daily_units"] if row["avg_daily_units"] > 0 else None,
@@ -91,6 +97,19 @@ inventory["DAYS_INVENTORY"] = inventory.apply(
 )
 low_stock = inventory.sort_values("DAYS_INVENTORY").head(10)
 overstock = inventory.sort_values("DAYS_INVENTORY", ascending=False).head(10)
+
+required_inventory_columns = ["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]
+missing_inventory_columns = [col for col in required_inventory_columns if col not in low_stock.columns]
+if missing_inventory_columns:
+    st.error(
+        "Faltan columnas requeridas para 'Productos por agotarse': "
+        + ", ".join(missing_inventory_columns)
+    )
+    dbf_path = resolve_dbf_dir() / "productos.dbf"
+    st.write("Fuente DBF:", str(dbf_path))
+    st.write("Columnas normalizadas:", list(inventory.columns))
+    st.write("Columnas disponibles:", list(low_stock.columns))
+    st.stop()
 
 col_low, col_high = st.columns(2)
 with col_low:

@@ -15,6 +15,15 @@ from sai_alpha.etl import DataBundle, enrich_pedidos, enrich_sales, load_data, r
 DATA_DIR = resolve_dbf_dir()
 EXPORT_DIR = Path("data/exports")
 
+PAGE_ROUTES = {
+    "Resumen Ejecutivo": "pages/1_Resumen Ejecutivo.py",
+    "Clientes": "pages/2_Clientes.py",
+    "Vendedores": "pages/3_Vendedores.py",
+    "Productos": "pages/4_Productos.py",
+    "Pedidos por Surtir": "pages/5_Pedidos por Surtir.py",
+    "Configuración": "pages/6_Configuración.py",
+}
+
 
 @dataclass
 class FilterState:
@@ -141,6 +150,22 @@ def apply_theme() -> None:
         unsafe_allow_html=True,
     )
     st.session_state["plotly_colors"] = [accent, primary, "#2c3e50", "#6f42c1", "#fd7e14"]
+
+
+def render_page_nav(current_page: str) -> None:
+    pages = list(PAGE_ROUTES.keys())
+    try:
+        current_index = pages.index(current_page)
+    except ValueError:
+        current_index = 0
+    selection = st.sidebar.selectbox(
+        "Ir a página",
+        pages,
+        index=current_index,
+        key="page_nav",
+    )
+    if selection != current_page:
+        st.switch_page(PAGE_ROUTES[selection])
 
 
 def plotly_colors() -> list[str]:

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import streamlit as st
 
-from sai_alpha.ui import apply_theme, init_session_state
+from sai_alpha.ui import apply_theme, init_session_state, render_page_nav
 
 
 st.set_page_config(page_title="Configuración", page_icon="⚙️", layout="wide")
 init_session_state()
 apply_theme()
+render_page_nav("Configuración")
 
 st.markdown("<div class='app-header'>Demo Tienda – Dashboard Ejecutivo</div>", unsafe_allow_html=True)
 st.caption("Abarrotes / Bebidas / Botanas / Lácteos")

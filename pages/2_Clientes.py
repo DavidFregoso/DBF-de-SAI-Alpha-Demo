@@ -11,6 +11,7 @@ from sai_alpha.ui import (
     load_orders,
     load_sales,
     plotly_colors,
+    render_page_nav,
     render_sidebar_filters,
     table_height,
 )
@@ -18,6 +19,7 @@ from sai_alpha.ui import (
 
 st.set_page_config(page_title="Clientes", page_icon="📇", layout="wide")
 apply_theme()
+render_page_nav("Clientes")
 
 ventas = load_sales()
 pedidos = load_orders()

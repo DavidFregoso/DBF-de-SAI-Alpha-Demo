@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from sai_alpha.etl import resolve_dbf_dir
 from sai_alpha.ui import REQUIRED_SALES_COLUMNS, load_bundle, load_sales
 
 
@@ -11,9 +12,20 @@ def _assert_required_columns(df, required, label) -> str:
     return f"{label}: OK"
 
 
+def _validate_product_schema(productos) -> None:
+    if "PRODUCT_NAME" in productos.columns:
+        return
+    dbf_dir = resolve_dbf_dir()
+    st.error("Falta la columna PRODUCT_NAME en el inventario (productos).")
+    st.write("DBF cargado:", str(dbf_dir / "productos.dbf"))
+    st.write("Columnas disponibles:", list(productos.columns))
+    st.stop()
+
+
 def _run_schema_checks() -> None:
     bundle = load_bundle()
     ventas = load_sales()
+    _validate_product_schema(bundle.productos)
     results = [
         _assert_required_columns(ventas, REQUIRED_SALES_COLUMNS, "ventas"),
         _assert_required_columns(

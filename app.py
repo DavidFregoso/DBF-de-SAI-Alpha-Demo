@@ -36,8 +36,12 @@ def load_sales(dbf_dir: Path) -> pd.DataFrame:
 
 def _export_excel(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        df.to_excel(writer, index=False)
+    try:
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False)
+    except ModuleNotFoundError:
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False)
     return buffer.getvalue()
 
 

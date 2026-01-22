@@ -3,13 +3,10 @@ from __future__ import annotations
 import plotly.express as px
 import streamlit as st
 
+from sai_alpha.formatting import fmt_currency, fmt_int
 from sai_alpha.filters import FilterState
 from sai_alpha.ui import (
     export_buttons,
-    format_currency_column,
-    format_int,
-    format_integer_column,
-    format_money,
     plotly_colors,
     render_page_header,
     table_height,
@@ -36,10 +33,10 @@ def render(filters: FilterState) -> None:
 
     st.markdown("### KPIs clave")
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric(f"Facturación ({filters.currency_label})", f"$ {format_money(revenue)}")
-    col2.metric("Clientes activos", format_int(clients))
-    col3.metric("# Facturas", format_int(orders))
-    col4.metric("MXN vs USD", f"{format_int(mxn_count)} / {format_int(usd_count)}")
+    col1.metric(f"Facturación ({filters.currency_label})", fmt_currency(revenue, filters.currency_label))
+    col2.metric("Clientes activos", fmt_int(clients))
+    col3.metric("# Facturas", fmt_int(orders))
+    col4.metric("MXN vs USD", f"{fmt_int(mxn_count)} / {fmt_int(usd_count)}")
 
     st.divider()
     st.markdown("### Ranking de clientes")
@@ -54,11 +51,28 @@ def render(filters: FilterState) -> None:
         .reset_index()
     )
     client_table = client_table.sort_values("revenue", ascending=False)
+    client_table["revenue_fmt"] = client_table["revenue"].map(
+        lambda value: fmt_currency(value, filters.currency_label)
+    )
+    client_table["units_fmt"] = client_table["units"].map(fmt_int)
+    client_table["invoices_fmt"] = client_table["invoices"].map(fmt_int)
 
     max_rows = st.slider("Mostrar Top N", min_value=10, max_value=50, value=20)
 
     st.dataframe(
-        client_table.head(max_rows),
+        client_table.head(max_rows)[
+            [
+                "CLIENT_ID",
+                "CLIENT_NAME",
+                "CLIENT_ORIGIN",
+                "RECOMM_SOURCE",
+                "REGION",
+                "revenue_fmt",
+                "units_fmt",
+                "invoices_fmt",
+                "last_order",
+            ]
+        ],
         use_container_width=True,
         height=table_height(max_rows),
         column_config={
@@ -66,9 +80,9 @@ def render(filters: FilterState) -> None:
             "CLIENT_ORIGIN": "Origen",
             "RECOMM_SOURCE": "Recomendación/Encuesta",
             "REGION": "Región",
-            "revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
-            "units": format_integer_column("Unidades"),
-            "invoices": format_integer_column("Facturas"),
+            "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
+            "units_fmt": st.column_config.TextColumn("Unidades"),
+            "invoices_fmt": st.column_config.TextColumn("Facturas"),
             "last_order": st.column_config.DatetimeColumn("Última compra", format="DD/MM/YYYY"),
         },
     )
@@ -89,15 +103,18 @@ def render(filters: FilterState) -> None:
         st.plotly_chart(fig_origin, use_container_width=True)
     with col_right:
         recent = client_table.sort_values("last_order", ascending=False).head(10)
+        recent["revenue_fmt"] = recent["revenue"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
         st.markdown("**Últimas compras**")
         st.dataframe(
-            recent[["CLIENT_NAME", "last_order", "revenue"]],
+            recent[["CLIENT_NAME", "last_order", "revenue_fmt"]],
             use_container_width=True,
             height=table_height(len(recent)),
             column_config={
                 "CLIENT_NAME": "Cliente",
                 "last_order": st.column_config.DatetimeColumn("Última compra", format="DD/MM/YYYY"),
-                "revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
+                "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
             },
         )
 

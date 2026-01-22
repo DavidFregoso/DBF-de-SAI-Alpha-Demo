@@ -3,8 +3,9 @@ from __future__ import annotations
 import streamlit as st
 
 from sai_alpha.etl import resolve_dbf_dir
-from sai_alpha.filters import render_sidebar_filters
-from sai_alpha.sections import clientes, configuracion, pedidos, productos, resumen, vendedores
+from sai_alpha.filters import AdvancedFilterContext, build_advanced_filters, build_filter_state, build_global_filters
+from sai_alpha.sections import clientes, configuracion, productos, resumen, vendedores
+from sai_alpha.sections import pedidos as pedidos_section
 from sai_alpha.state import init_state_once
 from sai_alpha.ui import REQUIRED_SALES_COLUMNS, apply_theme, load_bundle, load_orders, load_sales
 
@@ -54,7 +55,7 @@ def run_app() -> None:
 
     bundle = st.session_state.setdefault("data_bundle", load_bundle())
     ventas = st.session_state.setdefault("sales_data", load_sales())
-    pedidos = st.session_state.setdefault("orders_data", load_orders())
+    pedidos_df = st.session_state.setdefault("orders_data", load_orders())
 
     if ventas.empty:
         st.error("No hay datos disponibles. Ejecuta generate_dbfs.py para crear data DBF.")
@@ -62,10 +63,6 @@ def run_app() -> None:
 
     init_state_once(ventas)
     apply_theme()
-
-    st.sidebar.markdown("**Demo Tienda**")
-    st.sidebar.caption("Dashboard Ejecutivo")
-    st.sidebar.divider()
 
     sections = [
         "Resumen Ejecutivo",
@@ -76,12 +73,33 @@ def run_app() -> None:
         "Configuración",
     ]
     st.session_state.setdefault("nav_section", sections[0])
-    selected = st.sidebar.selectbox("Menú", sections, key="nav_section")
+    selected = st.session_state["nav_section"]
 
-    filters = render_sidebar_filters(ventas, pedidos)
+    st.sidebar.markdown("**Demo Tienda**")
+    st.sidebar.caption("Dashboard Ejecutivo")
+    st.sidebar.divider()
+
+    global_filters = build_global_filters(ventas)
+    advanced_context = AdvancedFilterContext(
+        brands=selected in {"Resumen Ejecutivo", "Clientes", "Vendedores", "Productos"},
+        categories=selected in {"Resumen Ejecutivo", "Productos"},
+        vendors=selected
+        in {"Resumen Ejecutivo", "Clientes", "Vendedores", "Productos", "Pedidos por Surtir"},
+        sale_origins=selected
+        in {"Resumen Ejecutivo", "Clientes", "Vendedores", "Productos", "Pedidos por Surtir"},
+        client_origins=selected in {"Resumen Ejecutivo", "Clientes", "Productos"},
+        recommendation_sources=selected in {"Resumen Ejecutivo", "Clientes", "Productos"},
+        invoice_types=selected in {"Resumen Ejecutivo", "Clientes", "Productos"},
+        order_types=selected in {"Resumen Ejecutivo", "Clientes", "Productos", "Pedidos por Surtir"},
+        order_statuses=selected == "Pedidos por Surtir",
+    )
+    advanced_filters = build_advanced_filters(ventas, pedidos_df, advanced_context)
+    st.sidebar.selectbox("Menú", sections, key="nav_section")
+
+    filters = build_filter_state(ventas, pedidos_df, global_filters, advanced_filters)
 
     if selected == "Resumen Ejecutivo":
-        resumen.render(filters, bundle, ventas, pedidos)
+        resumen.render(filters, bundle, ventas, pedidos_df)
     elif selected == "Clientes":
         clientes.render(filters)
     elif selected == "Vendedores":
@@ -89,7 +107,7 @@ def run_app() -> None:
     elif selected == "Productos":
         productos.render(filters, bundle, ventas)
     elif selected == "Pedidos por Surtir":
-        pedidos.render(filters)
+        pedidos_section.render(filters)
     elif selected == "Configuración":
         configuracion.render()
 

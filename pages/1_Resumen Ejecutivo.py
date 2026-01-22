@@ -1,4 +1,4 @@
-from __future__ import annotations
+from app import run_app
 
 from datetime import timedelta
 
@@ -265,3 +265,4 @@ else:
 
 st.markdown("### Exportar")
 export_buttons(filtered, "resumen_ventas")
+run_app()

@@ -1,4 +1,4 @@
-from __future__ import annotations
+from app import run_app
 
 import plotly.express as px
 import streamlit as st
@@ -116,3 +116,4 @@ st.dataframe(
 
 st.markdown("### Exportar")
 export_buttons(seller_summary, "vendedores_kpi")
+run_app()

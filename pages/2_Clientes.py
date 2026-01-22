@@ -1,4 +1,4 @@
-from __future__ import annotations
+from app import run_app
 
 import plotly.express as px
 import streamlit as st
@@ -114,3 +114,4 @@ with col_right:
 
 st.markdown("### Exportar")
 export_buttons(client_table, "clientes_ranking")
+run_app()

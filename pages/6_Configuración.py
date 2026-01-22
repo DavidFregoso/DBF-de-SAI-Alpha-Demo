@@ -1,4 +1,4 @@
-from __future__ import annotations
+from app import run_app
 
 import streamlit as st
 
@@ -38,3 +38,4 @@ st.slider(
 )
 
 st.info("Los cambios se aplican automáticamente en la siguiente interacción.")
+run_app()

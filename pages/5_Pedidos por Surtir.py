@@ -1,4 +1,4 @@
-from __future__ import annotations
+from app import run_app
 
 import numpy as np
 import pandas as pd
@@ -117,3 +117,4 @@ st.dataframe(
 
 st.markdown("### Exportar")
 export_buttons(pending, "pedidos_pendientes")
+run_app()

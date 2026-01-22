@@ -1,4 +1,4 @@
-from __future__ import annotations
+from app import run_app
 
 from datetime import timedelta
 
@@ -258,3 +258,4 @@ st.plotly_chart(fig_pareto, use_container_width=True)
 
 st.markdown("### Exportar")
 export_buttons(trend, "productos_tendencias")
+run_app()

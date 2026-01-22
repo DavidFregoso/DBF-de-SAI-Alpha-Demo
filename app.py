@@ -34,15 +34,49 @@ def load_sales(dbf_dir: Path) -> pd.DataFrame:
     return enrich_sales(bundle)
 
 
-def _export_excel(df: pd.DataFrame) -> bytes:
+def _export_excel(df: pd.DataFrame) -> tuple[bytes, str, str]:
     buffer = BytesIO()
     try:
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             df.to_excel(writer, index=False)
+        return (
+            buffer.getvalue(),
+            "xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
     except ModuleNotFoundError:
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False)
-    return buffer.getvalue()
+        buffer = BytesIO()
+        try:
+            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False)
+            return (
+                buffer.getvalue(),
+                "xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except ModuleNotFoundError:
+            csv_data = df.to_csv(index=False).encode("utf-8")
+            return (csv_data, "csv", "text/csv")
+
+
+def _render_csv_download(label: str, df: pd.DataFrame, filename: str) -> None:
+    try:
+        csv_data = df.to_csv(index=False).encode("utf-8")
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"No se pudo generar el CSV: {exc}")
+        return
+    st.download_button(label, data=csv_data, file_name=filename, mime="text/csv")
+
+
+def _render_excel_download(label: str, df: pd.DataFrame, filename_base: str) -> None:
+    try:
+        data, extension, mime = _export_excel(df)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"No se pudo generar el Excel: {exc}")
+        return
+    if extension == "csv":
+        st.warning("No se encontraron motores Excel; se exportará un CSV.")
+    st.download_button(label, data=data, file_name=f"{filename_base}.{extension}", mime=mime)
 
 
 def _build_inventory(productos: pd.DataFrame) -> pd.DataFrame:
@@ -210,19 +244,13 @@ def render_ventas(ventas: pd.DataFrame, filters: dict) -> None:
     st.plotly_chart(line_fig, use_container_width=True)
 
     st.subheader("Exportaciones")
-    csv_vendor = vendor_table.to_csv(index=False).encode("utf-8")
-    csv_series = series.to_csv(index=False).encode("utf-8")
     col_csv, col_excel, col_series = st.columns(3)
     with col_csv:
-        st.download_button("Exportar tabla CSV", data=csv_vendor, file_name="ventas_vendedor.csv")
+        _render_csv_download("Exportar tabla CSV", vendor_table, "ventas_vendedor.csv")
     with col_excel:
-        st.download_button(
-            "Exportar tabla Excel",
-            data=_export_excel(vendor_table),
-            file_name="ventas_vendedor.xlsx",
-        )
+        _render_excel_download("Exportar tabla Excel", vendor_table, "ventas_vendedor")
     with col_series:
-        st.download_button("Exportar serie CSV", data=csv_series, file_name="ventas_serie.csv")
+        _render_csv_download("Exportar serie CSV", series, "ventas_serie.csv")
 
 
 def render_clientes(ventas: pd.DataFrame, filters: dict) -> None:
@@ -293,9 +321,9 @@ def render_clientes(ventas: pd.DataFrame, filters: dict) -> None:
     st.subheader("Exportaciones")
     col_csv, col_excel = st.columns(2)
     with col_csv:
-        st.download_button("Exportar CSV", data=client_table.to_csv(index=False).encode("utf-8"), file_name="clientes.csv")
+        _render_csv_download("Exportar CSV", client_table, "clientes.csv")
     with col_excel:
-        st.download_button("Exportar Excel", data=_export_excel(client_table), file_name="clientes.xlsx")
+        _render_excel_download("Exportar Excel", client_table, "clientes")
 
 
 def render_productos(ventas: pd.DataFrame, productos: pd.DataFrame, filters: dict) -> None:
@@ -374,13 +402,9 @@ def render_productos(ventas: pd.DataFrame, productos: pd.DataFrame, filters: dic
     st.subheader("Exportaciones")
     col_excel, col_csv = st.columns(2)
     with col_excel:
-        st.download_button("Exportar stock Excel", data=_export_excel(stock_table_view), file_name="stock.xlsx")
+        _render_excel_download("Exportar stock Excel", stock_table_view, "stock")
     with col_csv:
-        st.download_button(
-            "Exportar rotación CSV",
-            data=rotation_table.to_csv(index=False).encode("utf-8"),
-            file_name="rotacion.csv",
-        )
+        _render_csv_download("Exportar rotación CSV", rotation_table, "rotacion.csv")
 
 
 def _get_dbf_files(dbf_dir: Path) -> list[Path]:

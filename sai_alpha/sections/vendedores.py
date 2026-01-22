@@ -3,13 +3,10 @@ from __future__ import annotations
 import plotly.express as px
 import streamlit as st
 
+from sai_alpha.formatting import fmt_currency, fmt_int
 from sai_alpha.filters import FilterState
 from sai_alpha.ui import (
     export_buttons,
-    format_currency_column,
-    format_int,
-    format_integer_column,
-    format_money,
     plotly_colors,
     render_page_header,
     table_height,
@@ -42,9 +39,9 @@ def render(filters: FilterState) -> None:
 
     st.markdown("### KPIs clave")
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric(f"Ventas ({filters.currency_label})", f"$ {format_money(revenue_total)}")
-    col2.metric("Pedidos", format_int(orders_total))
-    col3.metric("Vendedores activos", format_int(seller_summary["SELLER_NAME"].nunique()))
+    col1.metric(f"Ventas ({filters.currency_label})", fmt_currency(revenue_total, filters.currency_label))
+    col2.metric("Pedidos", fmt_int(orders_total))
+    col3.metric("Vendedores activos", fmt_int(seller_summary["SELLER_NAME"].nunique()))
     col4.metric("Top vendedor", top_vendor)
 
     st.divider()
@@ -86,18 +83,35 @@ def render(filters: FilterState) -> None:
 
     st.divider()
     st.markdown("### Tabla detallada")
+    seller_summary = seller_summary.copy()
+    seller_summary["revenue_fmt"] = seller_summary["revenue"].map(
+        lambda value: fmt_currency(value, filters.currency_label)
+    )
+    seller_summary["units_fmt"] = seller_summary["units"].map(fmt_int)
+    seller_summary["orders_fmt"] = seller_summary["orders"].map(fmt_int)
+    seller_summary["clients_fmt"] = seller_summary["clients"].map(fmt_int)
     st.dataframe(
-        seller_summary,
+        seller_summary[
+            [
+                "SELLER_NAME",
+                "REGION",
+                "TEAM",
+                "revenue_fmt",
+                "units_fmt",
+                "orders_fmt",
+                "clients_fmt",
+            ]
+        ],
         use_container_width=True,
         height=table_height(len(seller_summary)),
         column_config={
             "SELLER_NAME": "Vendedor",
             "REGION": "Región",
             "TEAM": "Equipo",
-            "revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
-            "units": format_integer_column("Unidades"),
-            "orders": format_integer_column("Pedidos"),
-            "clients": format_integer_column("Clientes"),
+            "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
+            "units_fmt": st.column_config.TextColumn("Unidades"),
+            "orders_fmt": st.column_config.TextColumn("Pedidos"),
+            "clients_fmt": st.column_config.TextColumn("Clientes"),
         },
     )
 

@@ -9,6 +9,7 @@ import plotly.io as pio
 import streamlit as st
 
 from sai_alpha.etl import DataBundle, enrich_pedidos, enrich_sales, load_data, resolve_dbf_dir
+from sai_alpha.formatting import fmt_int, fmt_num
 
 DATA_DIR = resolve_dbf_dir()
 EXPORT_DIR = Path("data/exports")
@@ -216,23 +217,23 @@ def normalize_currency(ventas: pd.DataFrame, currency_mode: str) -> tuple[pd.Dat
 
 
 def format_currency_column(label: str) -> st.column_config.Column:
-    return st.column_config.NumberColumn(label, format="$ %,.2f")
+    return st.column_config.TextColumn(label)
 
 
 def format_integer_column(label: str) -> st.column_config.Column:
-    return st.column_config.NumberColumn(label, format="%,d")
+    return st.column_config.TextColumn(label)
 
 
 def format_number_column(label: str) -> st.column_config.Column:
-    return st.column_config.NumberColumn(label, format="%,.2f")
+    return st.column_config.TextColumn(label)
 
 
 def format_money(value: float) -> str:
-    return f"{value:,.2f}"
+    return fmt_num(value)
 
 
 def format_int(value: float | int) -> str:
-    return f"{int(value):,}"
+    return fmt_int(value)
 
 
 def render_page_header(section_title: str) -> None:

@@ -70,15 +70,18 @@ def init_state_once(df_sales: pd.DataFrame) -> None:
         "theme_primary": "#0f5132",
         "theme_accent": "#198754",
         "table_density": "Confortable",
-        "granularity": "Mensual",
-        "granularity_prev": "Mensual",
-        "currency_mode": "MXN",
+        "period_mode": "Último periodo",
+        "granularity": "Semanal",
+        "granularity_prev": "Semanal",
+        "currency_view": "MXN",
         "period_day": latest.latest_day,
         "period_week_year": latest.latest_week_year,
         "period_week": latest.latest_week,
         "period_month_year": latest.latest_month_year,
         "period_month": latest.latest_month,
         "period_year": latest.latest_year,
+        "date_start": latest.min_date,
+        "date_end": latest.max_date,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -88,14 +91,17 @@ def init_state_once(df_sales: pd.DataFrame) -> None:
 
 def get_filters() -> dict[str, object]:
     return {
+        "period_mode": st.session_state.get("period_mode"),
         "granularity": st.session_state.get("granularity"),
-        "currency_mode": st.session_state.get("currency_mode"),
+        "currency_view": st.session_state.get("currency_view"),
         "period_day": st.session_state.get("period_day"),
         "period_week_year": st.session_state.get("period_week_year"),
         "period_week": st.session_state.get("period_week"),
         "period_month_year": st.session_state.get("period_month_year"),
         "period_month": st.session_state.get("period_month"),
         "period_year": st.session_state.get("period_year"),
+        "date_start": st.session_state.get("date_start"),
+        "date_end": st.session_state.get("date_end"),
         "brands": st.session_state.get("filter_brands"),
         "categories": st.session_state.get("filter_categories"),
         "vendors": st.session_state.get("filter_vendors"),

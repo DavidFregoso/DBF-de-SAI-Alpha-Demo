@@ -5,13 +5,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from sai_alpha.formatting import fmt_currency, fmt_int, fmt_num
 from sai_alpha.filters import FilterState
 from sai_alpha.ui import (
     export_buttons,
-    format_currency_column,
-    format_int,
-    format_integer_column,
-    format_money,
     plotly_colors,
     render_page_header,
     table_height,
@@ -36,10 +33,10 @@ def render(filters: FilterState) -> None:
 
     st.markdown("### KPIs clave")
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Pedidos pendientes", format_int(pending_count))
-    col2.metric("Unidades pendientes", format_int(pending["QTY_PENDING"].sum()))
-    col3.metric("Valor pendiente", f"$ {format_money(pending_value)}")
-    col4.metric("Edad promedio", f"{format_money(avg_age)} días")
+    col1.metric("Pedidos pendientes", fmt_int(pending_count))
+    col2.metric("Unidades pendientes", fmt_int(pending["QTY_PENDING"].sum()))
+    col3.metric("Valor pendiente", fmt_currency(pending_value, "MXN"))
+    col4.metric("Edad promedio", f"{fmt_num(avg_age)} días")
 
     st.divider()
     st.markdown("### Aging de pedidos")
@@ -70,15 +67,17 @@ def render(filters: FilterState) -> None:
         .reset_index()
         .sort_values("valor", ascending=False)
     )
+    by_vendor["pedidos_fmt"] = by_vendor["pedidos"].map(fmt_int)
+    by_vendor["valor_fmt"] = by_vendor["valor"].map(lambda value: fmt_currency(value, "MXN"))
 
     st.dataframe(
-        by_vendor,
+        by_vendor[["SELLER_NAME", "pedidos_fmt", "valor_fmt"]],
         use_container_width=True,
         height=table_height(len(by_vendor)),
         column_config={
             "SELLER_NAME": "Vendedor",
-            "pedidos": format_integer_column("Pedidos"),
-            "valor": format_currency_column("Valor pendiente"),
+            "pedidos_fmt": st.column_config.TextColumn("Pedidos"),
+            "valor_fmt": st.column_config.TextColumn("Valor pendiente"),
         },
     )
 
@@ -91,15 +90,17 @@ def render(filters: FilterState) -> None:
         .sort_values("valor", ascending=False)
         .head(20)
     )
+    by_client["pedidos_fmt"] = by_client["pedidos"].map(fmt_int)
+    by_client["valor_fmt"] = by_client["valor"].map(lambda value: fmt_currency(value, "MXN"))
 
     st.dataframe(
-        by_client,
+        by_client[["CLIENT_NAME", "pedidos_fmt", "valor_fmt"]],
         use_container_width=True,
         height=table_height(len(by_client)),
         column_config={
             "CLIENT_NAME": "Cliente",
-            "pedidos": format_integer_column("Pedidos"),
-            "valor": format_currency_column("Valor pendiente"),
+            "pedidos_fmt": st.column_config.TextColumn("Pedidos"),
+            "valor_fmt": st.column_config.TextColumn("Valor pendiente"),
         },
     )
 

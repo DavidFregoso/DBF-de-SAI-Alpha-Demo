@@ -7,15 +7,12 @@ import plotly.express as px
 import streamlit as st
 
 from sai_alpha.etl import resolve_dbf_dir
+from sai_alpha.formatting import fmt_currency, fmt_int, fmt_num, fmt_percent
 from sai_alpha.filters import FilterState
+from sai_alpha.schema import canonicalize_products, coalesce_column
 from sai_alpha.ui import (
     build_time_series,
     export_buttons,
-    format_currency_column,
-    format_integer_column,
-    format_int,
-    format_money,
-    format_number_column,
     render_page_header,
     normalize_currency,
     plotly_colors,
@@ -42,13 +39,13 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
 
     st.markdown("### KPIs clave")
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric(f"Ventas ({filters.currency_label})", f"$ {format_money(revenue)}")
-    col2.metric("Unidades", format_int(units))
-    col3.metric("Pedidos", format_int(orders))
-    col4.metric("Clientes activos", format_int(clients))
+    col1.metric(f"Ventas ({filters.currency_label})", fmt_currency(revenue, filters.currency_label))
+    col2.metric("Unidades", fmt_int(units))
+    col3.metric("Pedidos", fmt_int(orders))
+    col4.metric("Clientes activos", fmt_int(clients))
     col5.metric(
         "FX promedio",
-        f"{format_money(filters.fx_average)} MXN/USD" if filters.fx_average else "N/D",
+        f"{fmt_num(filters.fx_average)} MXN/USD" if filters.fx_average else "N/D",
     )
 
     st.divider()
@@ -74,8 +71,15 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
         .reset_index()
     )
     product_sales["avg_daily_units"] = product_sales["units"] / period_days
-    inventory = bundle.productos.copy()
-    inventory = inventory.merge(product_sales, on=["PRODUCT_ID", "BRAND", "CATEGORY"], how="left")
+    try:
+        inventory = canonicalize_products(bundle.productos)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    inventory = inventory.merge(
+        product_sales, on=["PRODUCT_ID", "BRAND", "CATEGORY"], how="left", suffixes=("", "_SALES")
+    )
+    inventory = coalesce_column(inventory, "PRODUCT_NAME", ["PRODUCT_NAME", "PRODUCT_NAME_SALES"])
     inventory["avg_daily_units"] = inventory["avg_daily_units"].fillna(0.0)
     inventory["DAYS_INVENTORY"] = inventory.apply(
         lambda row: row["STOCK_QTY"] / row["avg_daily_units"] if row["avg_daily_units"] > 0 else None,
@@ -84,8 +88,8 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
     low_stock = inventory.sort_values("DAYS_INVENTORY").head(10)
     overstock = inventory.sort_values("DAYS_INVENTORY", ascending=False).head(10)
 
-    required_inventory_columns = ["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]
-    missing_inventory_columns = [col for col in required_inventory_columns if col not in low_stock.columns]
+    required_inventory_columns = {"PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"}
+    missing_inventory_columns = sorted(required_inventory_columns - set(low_stock.columns))
     if missing_inventory_columns:
         st.error(
             "Faltan columnas requeridas para 'Productos por agotarse': "
@@ -100,30 +104,42 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
     col_low, col_high = st.columns(2)
     with col_low:
         st.markdown("**Productos por agotarse**")
+        low_display = low_stock.assign(
+            STOCK_QTY_FMT=low_stock["STOCK_QTY"].map(fmt_int),
+            DAYS_INVENTORY_FMT=low_stock["DAYS_INVENTORY"].map(fmt_num),
+        )
         st.dataframe(
-            low_stock[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]],
+            low_display[
+                ["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY_FMT", "DAYS_INVENTORY_FMT"]
+            ],
             use_container_width=True,
-            height=table_height(len(low_stock)),
+            height=table_height(len(low_display)),
             column_config={
                 "PRODUCT_NAME": "Producto",
                 "BRAND": "Marca",
                 "CATEGORY": "Categoría",
-                "STOCK_QTY": format_integer_column("Existencia"),
-                "DAYS_INVENTORY": format_number_column("Días inventario"),
+                "STOCK_QTY_FMT": st.column_config.TextColumn("Existencia"),
+                "DAYS_INVENTORY_FMT": st.column_config.TextColumn("Días inventario"),
             },
         )
     with col_high:
         st.markdown("**Sobre-stock (días altos)**")
+        over_display = overstock.assign(
+            STOCK_QTY_FMT=overstock["STOCK_QTY"].map(fmt_int),
+            DAYS_INVENTORY_FMT=overstock["DAYS_INVENTORY"].map(fmt_num),
+        )
         st.dataframe(
-            overstock[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]],
+            over_display[
+                ["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY_FMT", "DAYS_INVENTORY_FMT"]
+            ],
             use_container_width=True,
-            height=table_height(len(overstock)),
+            height=table_height(len(over_display)),
             column_config={
                 "PRODUCT_NAME": "Producto",
                 "BRAND": "Marca",
                 "CATEGORY": "Categoría",
-                "STOCK_QTY": format_integer_column("Existencia"),
-                "DAYS_INVENTORY": format_number_column("Días inventario"),
+                "STOCK_QTY_FMT": st.column_config.TextColumn("Existencia"),
+                "DAYS_INVENTORY_FMT": st.column_config.TextColumn("Días inventario"),
             },
         )
 
@@ -195,30 +211,56 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
     col_gain, col_loss = st.columns(2)
     with col_gain:
         st.markdown("**Marcas con mayor crecimiento**")
+        brand_gain = brand_delta.sort_values("delta", ascending=False).head(8).copy()
+        brand_gain["current_revenue_fmt"] = brand_gain["current_revenue"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        brand_gain["prev_revenue_fmt"] = brand_gain["prev_revenue"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        brand_gain["delta_fmt"] = brand_gain["delta"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        brand_gain["delta_pct_fmt"] = brand_gain["delta_pct"].map(fmt_percent)
         st.dataframe(
-            brand_delta.sort_values("delta", ascending=False).head(8),
+            brand_gain[["BRAND", "current_revenue_fmt", "prev_revenue_fmt", "delta_fmt", "delta_pct_fmt"]],
             use_container_width=True,
             height=table_height(8),
             column_config={
                 "BRAND": "Marca",
-                "current_revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
-                "prev_revenue": format_currency_column("Periodo anterior"),
-                "delta": format_currency_column("Δ ventas"),
-                "delta_pct": st.column_config.NumberColumn("Δ %", format="%,.2f%%"),
+                "current_revenue_fmt": st.column_config.TextColumn(
+                    f"Ventas ({filters.currency_label})"
+                ),
+                "prev_revenue_fmt": st.column_config.TextColumn("Periodo anterior"),
+                "delta_fmt": st.column_config.TextColumn("Δ ventas"),
+                "delta_pct_fmt": st.column_config.TextColumn("Δ %"),
             },
         )
     with col_loss:
         st.markdown("**Marcas con mayor caída**")
+        brand_loss = brand_delta.sort_values("delta", ascending=True).head(8).copy()
+        brand_loss["current_revenue_fmt"] = brand_loss["current_revenue"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        brand_loss["prev_revenue_fmt"] = brand_loss["prev_revenue"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        brand_loss["delta_fmt"] = brand_loss["delta"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        brand_loss["delta_pct_fmt"] = brand_loss["delta_pct"].map(fmt_percent)
         st.dataframe(
-            brand_delta.sort_values("delta", ascending=True).head(8),
+            brand_loss[["BRAND", "current_revenue_fmt", "prev_revenue_fmt", "delta_fmt", "delta_pct_fmt"]],
             use_container_width=True,
             height=table_height(8),
             column_config={
                 "BRAND": "Marca",
-                "current_revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
-                "prev_revenue": format_currency_column("Periodo anterior"),
-                "delta": format_currency_column("Δ ventas"),
-                "delta_pct": st.column_config.NumberColumn("Δ %", format="%,.2f%%"),
+                "current_revenue_fmt": st.column_config.TextColumn(
+                    f"Ventas ({filters.currency_label})"
+                ),
+                "prev_revenue_fmt": st.column_config.TextColumn("Periodo anterior"),
+                "delta_fmt": st.column_config.TextColumn("Δ ventas"),
+                "delta_pct_fmt": st.column_config.TextColumn("Δ %"),
             },
         )
 
@@ -233,22 +275,28 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
         pending_value = pending["PENDING_VALUE"].sum()
 
         col1, col2 = st.columns(2)
-        col1.metric("Pedidos pendientes", format_int(pending_count))
-        col2.metric("Valor pendiente (estimado)", f"$ {format_money(pending_value)}")
+        col1.metric("Pedidos pendientes", fmt_int(pending_count))
+        col2.metric(
+            "Valor pendiente (estimado)", fmt_currency(pending_value, filters.currency_label)
+        )
 
         pending_vendor = pending.groupby("SELLER_NAME").agg(
             pedidos=("ORDER_ID", "nunique"),
             valor=("PENDING_VALUE", "sum"),
         )
         pending_vendor = pending_vendor.reset_index().sort_values("valor", ascending=False).head(10)
+        pending_vendor["pedidos_fmt"] = pending_vendor["pedidos"].map(fmt_int)
+        pending_vendor["valor_fmt"] = pending_vendor["valor"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
         st.dataframe(
-            pending_vendor,
+            pending_vendor[["SELLER_NAME", "pedidos_fmt", "valor_fmt"]],
             use_container_width=True,
             height=table_height(len(pending_vendor)),
             column_config={
                 "SELLER_NAME": "Vendedor",
-                "pedidos": format_integer_column("Pedidos"),
-                "valor": format_currency_column("Valor pendiente"),
+                "pedidos_fmt": st.column_config.TextColumn("Pedidos"),
+                "valor_fmt": st.column_config.TextColumn("Valor pendiente"),
             },
         )
 

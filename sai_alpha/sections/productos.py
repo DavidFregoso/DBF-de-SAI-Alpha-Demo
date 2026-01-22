@@ -7,14 +7,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from sai_alpha.formatting import fmt_currency, fmt_int, fmt_num, fmt_percent
 from sai_alpha.filters import FilterState
+from sai_alpha.schema import canonicalize_products, coalesce_column
 from sai_alpha.ui import (
     export_buttons,
-    format_currency_column,
-    format_int,
-    format_integer_column,
-    format_money,
-    format_number_column,
     normalize_currency,
     plotly_colors,
     render_page_header,
@@ -41,8 +38,15 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame) -> None:
     )
     product_sales["avg_daily_units"] = product_sales["units"] / period_days
 
-    inventory = bundle.productos.copy()
-    inventory = inventory.merge(product_sales, on=["PRODUCT_ID", "BRAND", "CATEGORY"], how="left")
+    try:
+        inventory = canonicalize_products(bundle.productos)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    inventory = inventory.merge(
+        product_sales, on=["PRODUCT_ID", "BRAND", "CATEGORY"], how="left", suffixes=("", "_SALES")
+    )
+    inventory = coalesce_column(inventory, "PRODUCT_NAME", ["PRODUCT_NAME", "PRODUCT_NAME_SALES"])
     inventory["avg_daily_units"] = inventory["avg_daily_units"].fillna(0.0)
     inventory["DAYS_INVENTORY"] = inventory.apply(
         lambda row: row["STOCK_QTY"] / row["avg_daily_units"] if row["avg_daily_units"] > 0 else None,
@@ -60,43 +64,59 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame) -> None:
     high_stock = high_stock[high_stock["DAYS_INVENTORY"] >= high_threshold]
     high_stock = high_stock.sort_values("DAYS_INVENTORY", ascending=False).head(20)
 
+    required_columns = {"PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"}
+    missing_columns = sorted(required_columns - set(inventory.columns))
+    if missing_columns:
+        st.error(
+            "Faltan columnas requeridas para el inventario: " + ", ".join(missing_columns)
+        )
+        return
+
     st.markdown("### KPIs clave")
     avg_days = inventory["DAYS_INVENTORY"].dropna().mean()
-    avg_label = format_money(avg_days) if pd.notna(avg_days) else "N/D"
+    avg_label = fmt_num(avg_days) if pd.notna(avg_days) else "N/D"
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("SKU analizados", format_int(inventory["PRODUCT_ID"].nunique()))
-    col2.metric("SKU críticos", format_int(low_stock["PRODUCT_ID"].nunique()))
-    col3.metric("SKU sobre-stock", format_int(high_stock["PRODUCT_ID"].nunique()))
+    col1.metric("SKU analizados", fmt_int(inventory["PRODUCT_ID"].nunique()))
+    col2.metric("SKU críticos", fmt_int(low_stock["PRODUCT_ID"].nunique()))
+    col3.metric("SKU sobre-stock", fmt_int(high_stock["PRODUCT_ID"].nunique()))
     col4.metric("Días promedio", avg_label)
 
     st.divider()
     st.markdown("### Productos por agotarse")
+    low_display = low_stock.assign(
+        STOCK_QTY_FMT=low_stock["STOCK_QTY"].map(fmt_int),
+        DAYS_INVENTORY_FMT=low_stock["DAYS_INVENTORY"].map(fmt_num),
+    )
     st.dataframe(
-        low_stock[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]],
+        low_display[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY_FMT", "DAYS_INVENTORY_FMT"]],
         use_container_width=True,
-        height=table_height(len(low_stock)),
+        height=table_height(len(low_display)),
         column_config={
             "PRODUCT_NAME": "Producto",
             "BRAND": "Marca",
             "CATEGORY": "Categoría",
-            "STOCK_QTY": format_integer_column("Existencia"),
-            "DAYS_INVENTORY": format_number_column("Días inventario"),
+            "STOCK_QTY_FMT": st.column_config.TextColumn("Existencia"),
+            "DAYS_INVENTORY_FMT": st.column_config.TextColumn("Días inventario"),
         },
     )
 
     st.divider()
     st.markdown("### Productos sobre-stock")
+    high_display = high_stock.assign(
+        STOCK_QTY_FMT=high_stock["STOCK_QTY"].map(fmt_int),
+        DAYS_INVENTORY_FMT=high_stock["DAYS_INVENTORY"].map(fmt_num),
+    )
     st.dataframe(
-        high_stock[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]],
+        high_display[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY_FMT", "DAYS_INVENTORY_FMT"]],
         use_container_width=True,
-        height=table_height(len(high_stock)),
+        height=table_height(len(high_display)),
         column_config={
             "PRODUCT_NAME": "Producto",
             "BRAND": "Marca",
             "CATEGORY": "Categoría",
-            "STOCK_QTY": format_integer_column("Existencia"),
-            "DAYS_INVENTORY": format_number_column("Días inventario"),
+            "STOCK_QTY_FMT": st.column_config.TextColumn("Existencia"),
+            "DAYS_INVENTORY_FMT": st.column_config.TextColumn("Días inventario"),
         },
     )
 
@@ -141,32 +161,70 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame) -> None:
     col_up, col_down = st.columns(2)
     with col_up:
         st.markdown("**Top alzas**")
+        top_up = trend.sort_values("delta_revenue", ascending=False).head(10).copy()
+        top_up["units_fmt"] = top_up["units"].map(fmt_int)
+        top_up["delta_units_fmt"] = top_up["delta_units"].map(fmt_int)
+        top_up["revenue_fmt"] = top_up["revenue"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        top_up["delta_revenue_fmt"] = top_up["delta_revenue"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        top_up["delta_pct_fmt"] = top_up["delta_pct"].map(fmt_percent)
         st.dataframe(
-            trend.sort_values("delta_revenue", ascending=False).head(10),
+            top_up[
+                [
+                    "PRODUCT_NAME",
+                    "units_fmt",
+                    "delta_units_fmt",
+                    "revenue_fmt",
+                    "delta_revenue_fmt",
+                    "delta_pct_fmt",
+                ]
+            ],
             use_container_width=True,
             height=table_height(10),
             column_config={
                 "PRODUCT_NAME": "Producto",
-                "units": format_integer_column("Unidades"),
-                "delta_units": format_integer_column("Δ unidades"),
-                "revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
-                "delta_revenue": format_currency_column("Δ ventas"),
-                "delta_pct": st.column_config.NumberColumn("Δ %", format="%,.2f%%"),
+                "units_fmt": st.column_config.TextColumn("Unidades"),
+                "delta_units_fmt": st.column_config.TextColumn("Δ unidades"),
+                "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
+                "delta_revenue_fmt": st.column_config.TextColumn("Δ ventas"),
+                "delta_pct_fmt": st.column_config.TextColumn("Δ %"),
             },
         )
     with col_down:
         st.markdown("**Top caídas**")
+        top_down = trend.sort_values("delta_revenue", ascending=True).head(10).copy()
+        top_down["units_fmt"] = top_down["units"].map(fmt_int)
+        top_down["delta_units_fmt"] = top_down["delta_units"].map(fmt_int)
+        top_down["revenue_fmt"] = top_down["revenue"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        top_down["delta_revenue_fmt"] = top_down["delta_revenue"].map(
+            lambda value: fmt_currency(value, filters.currency_label)
+        )
+        top_down["delta_pct_fmt"] = top_down["delta_pct"].map(fmt_percent)
         st.dataframe(
-            trend.sort_values("delta_revenue", ascending=True).head(10),
+            top_down[
+                [
+                    "PRODUCT_NAME",
+                    "units_fmt",
+                    "delta_units_fmt",
+                    "revenue_fmt",
+                    "delta_revenue_fmt",
+                    "delta_pct_fmt",
+                ]
+            ],
             use_container_width=True,
             height=table_height(10),
             column_config={
                 "PRODUCT_NAME": "Producto",
-                "units": format_integer_column("Unidades"),
-                "delta_units": format_integer_column("Δ unidades"),
-                "revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
-                "delta_revenue": format_currency_column("Δ ventas"),
-                "delta_pct": st.column_config.NumberColumn("Δ %", format="%,.2f%%"),
+                "units_fmt": st.column_config.TextColumn("Unidades"),
+                "delta_units_fmt": st.column_config.TextColumn("Δ unidades"),
+                "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
+                "delta_revenue_fmt": st.column_config.TextColumn("Δ ventas"),
+                "delta_pct_fmt": st.column_config.TextColumn("Δ %"),
             },
         )
 
@@ -194,16 +252,27 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame) -> None:
     fig_brand.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
     st.plotly_chart(fig_brand, use_container_width=True)
 
+    brand_table = brand_summary.sort_values("delta_revenue", ascending=False).head(12).copy()
+    brand_table["units_fmt"] = brand_table["units"].map(fmt_int)
+    brand_table["revenue_fmt"] = brand_table["revenue"].map(
+        lambda value: fmt_currency(value, filters.currency_label)
+    )
+    brand_table["prev_revenue_fmt"] = brand_table["prev_revenue"].map(
+        lambda value: fmt_currency(value, filters.currency_label)
+    )
+    brand_table["delta_revenue_fmt"] = brand_table["delta_revenue"].map(
+        lambda value: fmt_currency(value, filters.currency_label)
+    )
     st.dataframe(
-        brand_summary.sort_values("delta_revenue", ascending=False).head(12),
+        brand_table[["BRAND", "units_fmt", "revenue_fmt", "prev_revenue_fmt", "delta_revenue_fmt"]],
         use_container_width=True,
         height=table_height(12),
         column_config={
             "BRAND": "Marca",
-            "units": format_integer_column("Unidades"),
-            "revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
-            "prev_revenue": format_currency_column("Periodo anterior"),
-            "delta_revenue": format_currency_column("Δ ventas"),
+            "units_fmt": st.column_config.TextColumn("Unidades"),
+            "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
+            "prev_revenue_fmt": st.column_config.TextColumn("Periodo anterior"),
+            "delta_revenue_fmt": st.column_config.TextColumn("Δ ventas"),
         },
     )
 

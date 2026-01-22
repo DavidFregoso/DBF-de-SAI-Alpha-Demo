@@ -1,6 +1,2 @@
 from __future__ import annotations
 
-from app import run_app
-
-
-run_app()

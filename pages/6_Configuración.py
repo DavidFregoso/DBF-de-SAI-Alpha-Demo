@@ -9,8 +9,8 @@ st.set_page_config(page_title="Configuración", page_icon="⚙️", layout="wide
 init_session_state()
 apply_theme()
 
-st.markdown("<div class='app-header'>Abarrotes Demo</div>", unsafe_allow_html=True)
-st.caption("Dashboard Ejecutivo SAI Alpha (Demo)")
+st.markdown("<div class='app-header'>Demo Tienda – Dashboard Ejecutivo</div>", unsafe_allow_html=True)
+st.caption("Abarrotes / Bebidas / Botanas / Lácteos")
 
 st.title("Configuración")
 

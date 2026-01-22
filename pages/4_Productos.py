@@ -4,6 +4,7 @@ from datetime import timedelta
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from sai_alpha.ui import (
@@ -11,16 +12,18 @@ from sai_alpha.ui import (
     export_buttons,
     format_currency_column,
     format_integer_column,
+    format_number_column,
     load_bundle,
     load_orders,
     load_sales,
     normalize_currency,
+    plotly_colors,
     render_sidebar_filters,
     table_height,
 )
 
 
-st.set_page_config(page_title="Productos & Inventario", page_icon="📦", layout="wide")
+st.set_page_config(page_title="Productos", page_icon="📦", layout="wide")
 apply_theme()
 
 bundle = load_bundle()
@@ -34,10 +37,10 @@ if ventas.empty:
 filters = render_sidebar_filters(ventas, pedidos)
 filtered = filters.sales
 
-st.markdown("<div class='app-header'>Abarrotes Demo</div>", unsafe_allow_html=True)
-st.caption("Dashboard Ejecutivo SAI Alpha (Demo)")
+st.markdown("<div class='app-header'>Demo Tienda – Dashboard Ejecutivo</div>", unsafe_allow_html=True)
+st.caption("Abarrotes / Bebidas / Botanas / Lácteos")
 
-st.title("Productos & Inventario")
+st.title("Productos")
 
 if filtered.empty:
     st.warning("No hay registros con los filtros actuales.")
@@ -47,7 +50,7 @@ period_days = max(1, (filters.end_date - filters.start_date).days + 1)
 product_sales = (
     filtered.groupby(["PRODUCT_ID", "PRODUCT_NAME", "BRAND", "CATEGORY"])
     .agg(
-        units=("QUANTITY", "sum"),
+        units=("QTY", "sum"),
         revenue=(filters.revenue_column, "sum"),
     )
     .reset_index()
@@ -58,7 +61,7 @@ inventory = bundle.productos.copy()
 inventory = inventory.merge(product_sales, on=["PRODUCT_ID", "BRAND", "CATEGORY"], how="left")
 inventory["avg_daily_units"] = inventory["avg_daily_units"].fillna(0.0)
 inventory["DAYS_INVENTORY"] = inventory.apply(
-    lambda row: row["EXISTENCIA"] / row["avg_daily_units"] if row["avg_daily_units"] > 0 else None,
+    lambda row: row["STOCK_QTY"] / row["avg_daily_units"] if row["avg_daily_units"] > 0 else None,
     axis=1,
 )
 
@@ -77,33 +80,33 @@ col1, col2, col3, col4 = st.columns(4)
 col1.metric("SKU analizados", f"{inventory['PRODUCT_ID'].nunique():,}")
 col2.metric("SKU críticos", f"{low_stock['PRODUCT_ID'].nunique():,}")
 col3.metric("SKU sobre-stock", f"{high_stock['PRODUCT_ID'].nunique():,}")
-col4.metric("Días promedio", f"{inventory['DAYS_INVENTORY'].dropna().mean():.1f}")
+col4.metric("Días promedio", f"{inventory['DAYS_INVENTORY'].dropna().mean():.2f}")
 
 st.markdown("### Productos por agotarse")
 st.dataframe(
-    low_stock[["PRODUCT_NAME", "BRAND", "CATEGORY", "EXISTENCIA", "DAYS_INVENTORY"]],
+    low_stock[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]],
     use_container_width=True,
     height=table_height(len(low_stock)),
     column_config={
         "PRODUCT_NAME": "Producto",
         "BRAND": "Marca",
         "CATEGORY": "Categoría",
-        "EXISTENCIA": format_integer_column("Existencia"),
-        "DAYS_INVENTORY": st.column_config.NumberColumn("Días inventario", format="%.1f"),
+        "STOCK_QTY": format_integer_column("Existencia"),
+        "DAYS_INVENTORY": format_number_column("Días inventario"),
     },
 )
 
 st.markdown("### Productos sobre-stock")
 st.dataframe(
-    high_stock[["PRODUCT_NAME", "BRAND", "CATEGORY", "EXISTENCIA", "DAYS_INVENTORY"]],
+    high_stock[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]],
     use_container_width=True,
     height=table_height(len(high_stock)),
     column_config={
         "PRODUCT_NAME": "Producto",
         "BRAND": "Marca",
         "CATEGORY": "Categoría",
-        "EXISTENCIA": format_integer_column("Existencia"),
-        "DAYS_INVENTORY": st.column_config.NumberColumn("Días inventario", format="%.1f"),
+        "STOCK_QTY": format_integer_column("Existencia"),
+        "DAYS_INVENTORY": format_number_column("Días inventario"),
     },
 )
 
@@ -117,20 +120,21 @@ prev_sales = ventas_norm[
 ]
 prev_sales = prev_sales[prev_sales["BRAND"].isin(filters.brands)]
 prev_sales = prev_sales[prev_sales["CATEGORY"].isin(filters.categories)]
-prev_sales = prev_sales[prev_sales["VENDOR_NAME"].isin(filters.vendors)]
-prev_sales = prev_sales[prev_sales["ORIGEN_VTA"].isin(filters.sale_origins)]
-prev_sales = prev_sales[prev_sales["ORIGEN_CLI"].isin(filters.client_origins)]
-prev_sales = prev_sales[prev_sales["TIPO_FACT"].isin(filters.invoice_types)]
+prev_sales = prev_sales[prev_sales["SELLER_NAME"].isin(filters.vendors)]
+prev_sales = prev_sales[prev_sales["ORIGEN_VENTA"].isin(filters.sale_origins)]
+prev_sales = prev_sales[prev_sales["CLIENT_ORIGIN"].isin(filters.client_origins)]
+prev_sales = prev_sales[prev_sales["RECOMM_SOURCE"].isin(filters.recommendation_sources)]
+prev_sales = prev_sales[prev_sales["TIPO_FACTURA"].isin(filters.invoice_types)]
 prev_sales = prev_sales[prev_sales["TIPO_ORDEN"].isin(filters.order_types)]
 
 current_prod = (
     filtered.groupby(["PRODUCT_ID", "PRODUCT_NAME"])
-    .agg(units=("QUANTITY", "sum"), revenue=(filters.revenue_column, "sum"))
+    .agg(units=("QTY", "sum"), revenue=(filters.revenue_column, "sum"))
     .reset_index()
 )
 prev_prod = (
     prev_sales.groupby(["PRODUCT_ID", "PRODUCT_NAME"])
-    .agg(units_prev=("QUANTITY", "sum"), revenue_prev=(filters.revenue_column, "sum"))
+    .agg(units_prev=("QTY", "sum"), revenue_prev=(filters.revenue_column, "sum"))
     .reset_index()
 )
 trend = current_prod.merge(prev_prod, on=["PRODUCT_ID", "PRODUCT_NAME"], how="left").fillna(0.0)
@@ -154,7 +158,7 @@ with col_up:
             "delta_units": format_integer_column("Δ unidades"),
             "revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
             "delta_revenue": format_currency_column("Δ ventas"),
-            "delta_pct": st.column_config.NumberColumn("Δ %", format="%.1f%%"),
+            "delta_pct": st.column_config.NumberColumn("Δ %", format="%,.2f%%"),
         },
     )
 with col_down:
@@ -169,14 +173,14 @@ with col_down:
             "delta_units": format_integer_column("Δ unidades"),
             "revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
             "delta_revenue": format_currency_column("Δ ventas"),
-            "delta_pct": st.column_config.NumberColumn("Δ %", format="%.1f%%"),
+            "delta_pct": st.column_config.NumberColumn("Δ %", format="%,.2f%%"),
         },
     )
 
 st.markdown("### Marcas dominantes y variación por periodo")
 brand_summary = (
     filtered.groupby("BRAND")
-    .agg(units=("QUANTITY", "sum"), revenue=(filters.revenue_column, "sum"))
+    .agg(units=("QTY", "sum"), revenue=(filters.revenue_column, "sum"))
     .reset_index()
 )
 brand_prev = (
@@ -191,6 +195,7 @@ fig_brand = px.bar(
     y="BRAND",
     orientation="h",
     title=f"Ranking marcas ({filters.currency_label})",
+    color_discrete_sequence=plotly_colors(),
 )
 fig_brand.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
 st.plotly_chart(fig_brand, use_container_width=True)
@@ -207,6 +212,44 @@ st.dataframe(
         "delta_revenue": format_currency_column("Δ ventas"),
     },
 )
+
+st.markdown("### Pareto de productos (Top 15)")
+pareto = (
+    filtered.groupby(["PRODUCT_ID", "PRODUCT_NAME"])[filters.revenue_column]
+    .sum()
+    .reset_index()
+    .sort_values(filters.revenue_column, ascending=False)
+    .head(15)
+)
+pareto["cum_pct"] = pareto[filters.revenue_column].cumsum() / pareto[filters.revenue_column].sum() * 100
+
+fig_pareto = go.Figure()
+fig_pareto.add_bar(
+    x=pareto["PRODUCT_NAME"],
+    y=pareto[filters.revenue_column],
+    name=f"Ventas ({filters.currency_label})",
+    marker_color=plotly_colors()[0],
+)
+fig_pareto.add_scatter(
+    x=pareto["PRODUCT_NAME"],
+    y=pareto["cum_pct"],
+    name="% acumulado",
+    yaxis="y2",
+    mode="lines+markers",
+    marker_color=plotly_colors()[1],
+)
+fig_pareto.update_layout(
+    height=360,
+    margin=dict(l=20, r=20, t=40, b=20),
+    yaxis=dict(title=f"Ventas ({filters.currency_label})"),
+    yaxis2=dict(
+        title="% acumulado",
+        overlaying="y",
+        side="right",
+        range=[0, 110],
+    ),
+)
+st.plotly_chart(fig_pareto, use_container_width=True)
 
 st.markdown("### Exportar")
 export_buttons(trend, "productos_tendencias")

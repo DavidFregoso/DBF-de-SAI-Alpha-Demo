@@ -4,12 +4,18 @@ import pandas as pd
 
 
 def resumen_kpis(ventas: pd.DataFrame) -> dict[str, float | int | str]:
-    total_revenue = float(ventas["REVENUE"].sum())
-    total_units = int(ventas["QUANTITY"].sum())
-    avg_ticket = float(ventas.groupby("SALE_ID")["REVENUE"].sum().mean()) if not ventas.empty else 0.0
+    revenue_col = "REVENUE_MXN" if "REVENUE_MXN" in ventas.columns else "AMOUNT_MXN"
+    qty_col = "QTY" if "QTY" in ventas.columns else "QUANTITY"
+    total_revenue = float(ventas[revenue_col].sum()) if revenue_col in ventas.columns else 0.0
+    total_units = int(ventas[qty_col].sum()) if qty_col in ventas.columns else 0
+    avg_ticket = (
+        float(ventas.groupby("SALE_ID")[revenue_col].sum().mean())
+        if not ventas.empty and revenue_col in ventas.columns
+        else 0.0
+    )
     top_brand = (
-        ventas.groupby("BRAND")["REVENUE"].sum().sort_values(ascending=False).index[0]
-        if not ventas.empty
+        ventas.groupby("BRAND")[revenue_col].sum().sort_values(ascending=False).index[0]
+        if not ventas.empty and revenue_col in ventas.columns
         else "N/A"
     )
     return {
@@ -21,13 +27,15 @@ def resumen_kpis(ventas: pd.DataFrame) -> dict[str, float | int | str]:
 
 
 def kpis_by_dimension(ventas: pd.DataFrame, dimension: str) -> pd.DataFrame:
+    revenue_col = "REVENUE_MXN" if "REVENUE_MXN" in ventas.columns else "AMOUNT_MXN"
+    qty_col = "QTY" if "QTY" in ventas.columns else "QUANTITY"
     grouped = (
         ventas.groupby(dimension)
         .agg(
-            revenue=("REVENUE", "sum"),
-            units=("QUANTITY", "sum"),
-            avg_ticket=("REVENUE", "mean"),
-            orders=("SALE_ID", "nunique"),
+            revenue=(revenue_col, "sum"),
+            units=(qty_col, "sum"),
+            avg_ticket=(revenue_col, "mean"),
+            orders=("FACTURA_ID" if "FACTURA_ID" in ventas.columns else "SALE_ID", "nunique"),
         )
         .reset_index()
     )

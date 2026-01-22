@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+import calendar
 from io import BytesIO
 from pathlib import Path
 import importlib.util
@@ -26,6 +27,7 @@ class FilterState:
     vendors: list[str]
     sale_origins: list[str]
     client_origins: list[str]
+    recommendation_sources: list[str]
     invoice_types: list[str]
     order_types: list[str]
     order_statuses: list[str] | None
@@ -34,6 +36,7 @@ class FilterState:
     currency_label: str
     revenue_column: str
     unit_price_column: str
+    fx_average: float | None
 
 
 @st.cache_data(show_spinner=False)
@@ -60,15 +63,43 @@ def load_orders() -> pd.DataFrame:
     return pedidos
 
 
+REQUIRED_SALES_COLUMNS = {
+    "SALE_DATE",
+    "PRODUCT_ID",
+    "PRODUCT_NAME",
+    "BRAND",
+    "CATEGORY",
+    "CLIENT_ID",
+    "CLIENT_NAME",
+    "CLIENT_ORIGIN",
+    "SELLER_ID",
+    "SELLER_NAME",
+    "ORIGEN_VENTA",
+    "RECOMM_SOURCE",
+    "TIPO_FACTURA",
+    "TIPO_ORDEN",
+    "STATUS",
+    "QTY",
+    "UNIT_PRICE_MXN",
+    "REVENUE_MXN",
+    "REVENUE_USD",
+}
+
+
+def validate_sales_schema(ventas: pd.DataFrame) -> list[str]:
+    missing = sorted(REQUIRED_SALES_COLUMNS - set(ventas.columns))
+    return missing
+
+
 def init_session_state() -> None:
     defaults = {
         "theme_primary": "#0f5132",
         "theme_accent": "#198754",
         "table_density": "Confortable",
         "default_window_days": 90,
-        "date_preset": "Rango personalizado",
-        "granularity": "Mensual",
-        "currency_mode": "Normalizado a MXN",
+        "date_preset": "Semana",
+        "granularity": "Semanal",
+        "currency_mode": "MXN",
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -109,6 +140,11 @@ def apply_theme() -> None:
         """,
         unsafe_allow_html=True,
     )
+    st.session_state["plotly_colors"] = [accent, primary, "#2c3e50", "#6f42c1", "#fd7e14"]
+
+
+def plotly_colors() -> list[str]:
+    return st.session_state.get("plotly_colors", ["#198754", "#0f5132", "#2c3e50"])
 
 
 def _resolve_excel_engine() -> str | None:
@@ -157,33 +193,25 @@ def export_buttons(df: pd.DataFrame, label: str) -> None:
 
 
 def _metric_columns(currency_mode: str) -> tuple[str, str, str]:
-    if currency_mode == "Ver en USD":
+    if currency_mode == "USD":
         return "REVENUE_USD", "UNIT_PRICE_USD", "USD"
-    if currency_mode == "Ver en MXN":
-        return "REVENUE_MXN", "UNIT_PRICE", "MXN"
-    return "REVENUE_NORM_MXN", "UNIT_PRICE", "MXN"
+    return "REVENUE_MXN", "UNIT_PRICE_MXN", "MXN"
 
 
+@st.cache_data(show_spinner=False)
 def normalize_currency(ventas: pd.DataFrame, currency_mode: str) -> tuple[pd.DataFrame, str, str, str]:
     df = ventas.copy()
-    df["REVENUE_MXN"] = df["REVENUE"].astype(float)
-    if "REVENUE_USD" not in df.columns and "TC_MXN_USD" in df.columns:
-        df["REVENUE_USD"] = df["REVENUE_MXN"] / df["TC_MXN_USD"].replace(0, pd.NA)
-    if "REVENUE_USD" in df.columns:
-        df["REVENUE_USD"] = df["REVENUE_USD"].astype(float)
-    if "TC_MXN_USD" in df.columns:
-        df["REVENUE_NORM_MXN"] = df.apply(
-            lambda row: row["REVENUE_USD"] * row["TC_MXN_USD"]
-            if row.get("MONEDA") == "USD"
-            else row["REVENUE_MXN"],
-            axis=1,
-        )
-    else:
-        df["REVENUE_NORM_MXN"] = df["REVENUE_MXN"]
-    if "TC_MXN_USD" in df.columns:
-        df["UNIT_PRICE_USD"] = df["UNIT_PRICE"] / df["TC_MXN_USD"].replace(0, pd.NA)
-    else:
-        df["UNIT_PRICE_USD"] = df["UNIT_PRICE"]
+    if "REVENUE_MXN" not in df.columns and "AMOUNT_MXN" in df.columns:
+        df["REVENUE_MXN"] = df["AMOUNT_MXN"].astype(float)
+    if "REVENUE_USD" not in df.columns and "AMOUNT_USD" in df.columns:
+        df["REVENUE_USD"] = df["AMOUNT_USD"].astype(float)
+    if "REVENUE_USD" not in df.columns and "USD_MXN_RATE" in df.columns:
+        df["REVENUE_USD"] = df["REVENUE_MXN"] / df["USD_MXN_RATE"].replace(0, pd.NA)
+    if "UNIT_PRICE_MXN" in df.columns and "UNIT_PRICE_USD" not in df.columns:
+        if "USD_MXN_RATE" in df.columns:
+            df["UNIT_PRICE_USD"] = df["UNIT_PRICE_MXN"] / df["USD_MXN_RATE"].replace(0, pd.NA)
+        else:
+            df["UNIT_PRICE_USD"] = df["UNIT_PRICE_MXN"]
 
     revenue_col, unit_col, label = _metric_columns(currency_mode)
     return df, revenue_col, unit_col, label
@@ -231,9 +259,29 @@ def _date_range_from_preset(preset: str, max_date: date) -> tuple[date, date]:
     return _resolve_date_range(max_date)
 
 
+def _week_range_from_selection(year: int, week: int) -> tuple[date, date]:
+    start = date.fromisocalendar(year, week, 1)
+    end = date.fromisocalendar(year, week, 7)
+    return start, end
+
+
+def _month_range_from_selection(year: int, month: int) -> tuple[date, date]:
+    start = date(year, month, 1)
+    last_day = calendar.monthrange(year, month)[1]
+    end = date(year, month, last_day)
+    return start, end
+
+
+def _year_range_from_selection(year: int) -> tuple[date, date]:
+    return date(year, 1, 1), date(year, 12, 31)
+
+
 def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -> FilterState:
     init_session_state()
-    st.sidebar.markdown("## Dashboard Ejecutivo SAI Alpha (Demo)")
+    logo_path = Path("assets") / "logo.svg"
+    if logo_path.exists():
+        st.sidebar.image(str(logo_path), use_column_width=True)
+    st.sidebar.markdown("## Demo Tienda – Dashboard Ejecutivo")
     st.sidebar.caption("Filtros globales")
 
     min_date = ventas["SALE_DATE"].min().date()
@@ -248,7 +296,52 @@ def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -
         key="date_preset",
     )
 
-    if preset == "Rango personalizado":
+    if preset == "Semana":
+        years = sorted(ventas["SALE_DATE"].dt.year.unique().tolist())
+        default_year = st.session_state.get("period_year", max_date.year)
+        year = st.sidebar.selectbox("Año", years, index=years.index(default_year), key="period_year")
+        weeks = sorted(
+            ventas[ventas["SALE_DATE"].dt.year == year]["SALE_DATE"].dt.isocalendar().week.unique().tolist()
+        )
+        default_week = int(max_date.isocalendar().week) if year == max_date.year else weeks[-1]
+        week = st.sidebar.selectbox("Semana", weeks, index=weeks.index(default_week), key="period_week")
+        start_date, end_date = _week_range_from_selection(year, int(week))
+    elif preset == "Mes":
+        years = sorted(ventas["SALE_DATE"].dt.year.unique().tolist())
+        default_year = st.session_state.get("period_month_year", max_date.year)
+        year = st.sidebar.selectbox(
+            "Año",
+            years,
+            index=years.index(default_year),
+            key="period_month_year",
+        )
+        month_names = [calendar.month_name[m] for m in range(1, 13)]
+        default_month_state = st.session_state.get("period_month", max_date.month)
+        if isinstance(default_month_state, str):
+            default_month_name = default_month_state
+        else:
+            default_month_name = calendar.month_name[int(default_month_state)]
+        month_name = st.sidebar.selectbox(
+            "Mes",
+            month_names,
+            index=month_names.index(default_month_name),
+            key="period_month",
+        )
+        month = month_names.index(month_name) + 1
+        start_date, end_date = _month_range_from_selection(year, month)
+    elif preset == "Año":
+        years = sorted(ventas["SALE_DATE"].dt.year.unique().tolist())
+        default_year = st.session_state.get("period_year_only", max_date.year)
+        year = st.sidebar.selectbox(
+            "Año",
+            years,
+            index=years.index(default_year),
+            key="period_year_only",
+        )
+        start_date, end_date = _year_range_from_selection(year)
+    elif preset == "Día":
+        start_date, end_date = max_date, max_date
+    else:
         start_default, end_default = _resolve_date_range(max_date)
         date_range = st.sidebar.date_input(
             "Rango de fechas",
@@ -260,8 +353,11 @@ def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -
             start_date, end_date = date_range
         else:
             start_date, end_date = start_default, end_default
-    else:
-        start_date, end_date = _date_range_from_preset(preset, max_date)
+
+    if start_date < min_date:
+        start_date = min_date
+    if end_date > max_date:
+        end_date = max_date
 
     granularity = st.sidebar.selectbox(
         "Granularidad",
@@ -274,19 +370,25 @@ def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -
 
     currency_mode = st.sidebar.radio(
         "Vista moneda",
-        ["Ver en MXN", "Ver en USD", "Normalizado a MXN"],
-        index=["Ver en MXN", "Ver en USD", "Normalizado a MXN"].index(
-            st.session_state.get("currency_mode", "Normalizado a MXN")
-        ),
+        ["MXN", "USD"],
+        index=["MXN", "USD"].index(st.session_state.get("currency_mode", "MXN")),
         key="currency_mode",
     )
 
+    missing_columns = validate_sales_schema(ventas)
+    if missing_columns:
+        st.sidebar.error(
+            "Faltan columnas requeridas en la tabla de ventas: " + ", ".join(missing_columns)
+        )
+        st.stop()
+
     brand_options = sorted(ventas["BRAND"].dropna().unique().tolist())
     category_options = sorted(ventas["CATEGORY"].dropna().unique().tolist())
-    vendor_options = sorted(ventas["VENDOR_NAME"].dropna().unique().tolist())
-    sale_origin_options = sorted(ventas["ORIGEN_VTA"].dropna().unique().tolist())
-    client_origin_options = sorted(ventas["ORIGEN_CLI"].dropna().unique().tolist())
-    invoice_options = sorted(ventas["TIPO_FACT"].dropna().unique().tolist())
+    vendor_options = sorted(ventas["SELLER_NAME"].dropna().unique().tolist())
+    sale_origin_options = sorted(ventas["ORIGEN_VENTA"].dropna().unique().tolist())
+    client_origin_options = sorted(ventas["CLIENT_ORIGIN"].dropna().unique().tolist())
+    recommendation_options = sorted(ventas["RECOMM_SOURCE"].dropna().unique().tolist())
+    invoice_options = sorted(ventas["TIPO_FACTURA"].dropna().unique().tolist())
     order_type_options = sorted(ventas["TIPO_ORDEN"].dropna().unique().tolist())
 
     status_options: list[str] = []
@@ -299,6 +401,11 @@ def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -
     vendors = multiselect_with_actions("Vendedor", vendor_options, "filter_vendors")
     sale_origins = multiselect_with_actions("Origen de venta", sale_origin_options, "filter_sale_origins")
     client_origins = multiselect_with_actions("Origen de cliente", client_origin_options, "filter_client_origins")
+    recommendation_sources = multiselect_with_actions(
+        "Recomendación / encuesta",
+        recommendation_options,
+        "filter_recommendations",
+    )
     invoice_types = multiselect_with_actions("Tipo de factura", invoice_options, "filter_invoice_types")
     order_types = multiselect_with_actions("Tipo de orden", order_type_options, "filter_order_types")
     if status_options:
@@ -319,6 +426,7 @@ def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -
         vendors,
         sale_origins,
         client_origins,
+        recommendation_sources,
         invoice_types,
         order_types,
     )
@@ -337,6 +445,24 @@ def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -
 
     st.sidebar.caption(f"Registros filtrados: {len(sales_filtered):,}")
 
+    fx_average = None
+    if "USD_MXN_RATE" in ventas_normalized.columns:
+        fx_filtered = ventas_normalized[
+            (ventas_normalized["SALE_DATE"] >= pd.Timestamp(start_date))
+            & (ventas_normalized["SALE_DATE"] <= pd.Timestamp(end_date))
+        ]
+        fx_series = fx_filtered["USD_MXN_RATE"].dropna()
+        fx_average = float(fx_series.mean()) if not fx_series.empty else None
+
+    with st.sidebar.expander("Tema", expanded=False):
+        st.color_picker("Color primario", key="theme_primary")
+        st.color_picker("Color acento", key="theme_accent")
+        st.selectbox(
+            "Densidad de tablas",
+            ["Compacta", "Confortable", "Amplia"],
+            key="table_density",
+        )
+
     return FilterState(
         start_date=start_date,
         end_date=end_date,
@@ -347,6 +473,7 @@ def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -
         vendors=vendors,
         sale_origins=sale_origins,
         client_origins=client_origins,
+        recommendation_sources=recommendation_sources,
         invoice_types=invoice_types,
         order_types=order_types,
         order_statuses=order_statuses,
@@ -355,9 +482,11 @@ def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -
         currency_label=currency_label,
         revenue_column=revenue_column,
         unit_price_column=unit_price_column,
+        fx_average=fx_average,
     )
 
 
+@st.cache_data(show_spinner=False)
 def apply_sales_filters(
     ventas: pd.DataFrame,
     start_date: date,
@@ -367,6 +496,7 @@ def apply_sales_filters(
     vendors: list[str],
     sale_origins: list[str],
     client_origins: list[str],
+    recommendation_sources: list[str],
     invoice_types: list[str],
     order_types: list[str],
 ) -> pd.DataFrame:
@@ -381,19 +511,23 @@ def apply_sales_filters(
     else:
         return df.iloc[0:0]
     if vendors:
-        df = df[df["VENDOR_NAME"].isin(vendors)]
+        df = df[df["SELLER_NAME"].isin(vendors)]
     else:
         return df.iloc[0:0]
     if sale_origins:
-        df = df[df["ORIGEN_VTA"].isin(sale_origins)]
+        df = df[df["ORIGEN_VENTA"].isin(sale_origins)]
     else:
         return df.iloc[0:0]
     if client_origins:
-        df = df[df["ORIGEN_CLI"].isin(client_origins)]
+        df = df[df["CLIENT_ORIGIN"].isin(client_origins)]
+    else:
+        return df.iloc[0:0]
+    if recommendation_sources:
+        df = df[df["RECOMM_SOURCE"].isin(recommendation_sources)]
     else:
         return df.iloc[0:0]
     if invoice_types:
-        df = df[df["TIPO_FACT"].isin(invoice_types)]
+        df = df[df["TIPO_FACTURA"].isin(invoice_types)]
     else:
         return df.iloc[0:0]
     if order_types:
@@ -403,6 +537,7 @@ def apply_sales_filters(
     return df
 
 
+@st.cache_data(show_spinner=False)
 def apply_order_filters(
     pedidos: pd.DataFrame,
     start_date: date,
@@ -414,13 +549,13 @@ def apply_order_filters(
 ) -> pd.DataFrame:
     df = pedidos.copy()
     df = df[(df["ORDER_DATE"] >= pd.Timestamp(start_date)) & (df["ORDER_DATE"] <= pd.Timestamp(end_date))]
-    if vendors and "VENDOR_NAME" in df.columns:
-        df = df[df["VENDOR_NAME"].isin(vendors)]
-    elif vendors == [] and "VENDOR_NAME" in df.columns:
+    if vendors and "SELLER_NAME" in df.columns:
+        df = df[df["SELLER_NAME"].isin(vendors)]
+    elif vendors == [] and "SELLER_NAME" in df.columns:
         return df.iloc[0:0]
-    if sale_origins and "ORIGEN_VTA" in df.columns:
-        df = df[df["ORIGEN_VTA"].isin(sale_origins)]
-    elif sale_origins == [] and "ORIGEN_VTA" in df.columns:
+    if sale_origins and "ORIGEN_VENTA" in df.columns:
+        df = df[df["ORIGEN_VENTA"].isin(sale_origins)]
+    elif sale_origins == [] and "ORIGEN_VENTA" in df.columns:
         return df.iloc[0:0]
     if order_types and "TIPO_ORDEN" in df.columns:
         df = df[df["TIPO_ORDEN"].isin(order_types)]
@@ -443,6 +578,11 @@ def format_integer_column(label: str) -> st.column_config.Column:
     return st.column_config.NumberColumn(label, format="%,d")
 
 
+def format_number_column(label: str) -> st.column_config.Column:
+    return st.column_config.NumberColumn(label, format="%,.2f")
+
+
+@st.cache_data(show_spinner=False)
 def build_time_series(df: pd.DataFrame, date_col: str, value_col: str, granularity: str) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame({date_col: [], value_col: []})
@@ -451,7 +591,7 @@ def build_time_series(df: pd.DataFrame, date_col: str, value_col: str, granulari
         series[date_col] = pd.to_datetime(series[date_col])
         return series
     if granularity == "Semanal":
-        series = df.groupby(pd.Grouper(key=date_col, freq="W"))[value_col].sum().reset_index()
+        series = df.groupby(pd.Grouper(key=date_col, freq="W-MON"))[value_col].sum().reset_index()
         return series
     if granularity == "Mensual":
         series = df.groupby(pd.Grouper(key=date_col, freq="M"))[value_col].sum().reset_index()

@@ -10,6 +10,7 @@ from sai_alpha.ui import (
     format_integer_column,
     load_orders,
     load_sales,
+    plotly_colors,
     render_sidebar_filters,
     table_height,
 )
@@ -28,8 +29,8 @@ if ventas.empty:
 filters = render_sidebar_filters(ventas, pedidos)
 filtered = filters.sales
 
-st.markdown("<div class='app-header'>Abarrotes Demo</div>", unsafe_allow_html=True)
-st.caption("Dashboard Ejecutivo SAI Alpha (Demo)")
+st.markdown("<div class='app-header'>Demo Tienda – Dashboard Ejecutivo</div>", unsafe_allow_html=True)
+st.caption("Abarrotes / Bebidas / Botanas / Lácteos")
 
 st.title("Clientes")
 
@@ -39,9 +40,9 @@ if filtered.empty:
 
 revenue = filtered[filters.revenue_column].sum()
 clients = filtered["CLIENT_ID"].nunique()
-orders = filtered["SALE_ID"].nunique()
-mxn_count = (filtered["MONEDA"] == "MXN").sum() if "MONEDA" in filtered.columns else 0
-usd_count = (filtered["MONEDA"] == "USD").sum() if "MONEDA" in filtered.columns else 0
+orders = filtered["FACTURA_ID"].nunique() if "FACTURA_ID" in filtered.columns else filtered["SALE_ID"].nunique()
+mxn_count = (filtered["CURRENCY"] == "MXN").sum() if "CURRENCY" in filtered.columns else 0
+usd_count = (filtered["CURRENCY"] == "USD").sum() if "CURRENCY" in filtered.columns else 0
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric(f"Facturación ({filters.currency_label})", f"$ {revenue:,.2f}")
@@ -51,11 +52,11 @@ col4.metric("MXN vs USD", f"{mxn_count:,} / {usd_count:,}")
 
 st.markdown("### Ranking de clientes")
 client_table = (
-    filtered.groupby(["CLIENT_ID", "CLIENT_NAME", "ORIGEN_CLI", "CHANNEL", "REGION"])
+    filtered.groupby(["CLIENT_ID", "CLIENT_NAME", "CLIENT_ORIGIN", "RECOMM_SOURCE", "REGION"])
     .agg(
         revenue=(filters.revenue_column, "sum"),
-        units=("QUANTITY", "sum"),
-        invoices=("SALE_ID", "nunique"),
+        units=("QTY", "sum"),
+        invoices=("FACTURA_ID", "nunique"),
         last_order=("SALE_DATE", "max"),
     )
     .reset_index()
@@ -70,8 +71,8 @@ st.dataframe(
     height=table_height(max_rows),
     column_config={
         "CLIENT_NAME": "Cliente",
-        "ORIGEN_CLI": "Origen",
-        "CHANNEL": "Canal",
+        "CLIENT_ORIGIN": "Origen",
+        "RECOMM_SOURCE": "Recomendación/Encuesta",
         "REGION": "Región",
         "revenue": format_currency_column(f"Ventas ({filters.currency_label})"),
         "units": format_integer_column("Unidades"),
@@ -84,9 +85,15 @@ st.markdown("### Origen de clientes y actividad")
 col_left, col_right = st.columns(2)
 with col_left:
     origin = (
-        filtered.groupby("ORIGEN_CLI")["CLIENT_ID"].nunique().reset_index(name="Clientes")
+        filtered.groupby("CLIENT_ORIGIN")["CLIENT_ID"].nunique().reset_index(name="Clientes")
     )
-    fig_origin = px.bar(origin, x="ORIGEN_CLI", y="Clientes", title="Distribución por origen")
+    fig_origin = px.bar(
+        origin,
+        x="CLIENT_ORIGIN",
+        y="Clientes",
+        title="Distribución por origen",
+        color_discrete_sequence=plotly_colors(),
+    )
     fig_origin.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
     st.plotly_chart(fig_origin, use_container_width=True)
 with col_right:

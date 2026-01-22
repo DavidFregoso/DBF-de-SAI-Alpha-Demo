@@ -9,46 +9,37 @@ from typing import Iterable
 
 import dbf
 
-BRANDS = [
-    "Andes",
-    "Pacifica",
-    "Sierra",
-    "Aurora",
-    "Delta",
-    "Altiplano",
-    "Brisa",
-    "Cumbres",
-    "Laguna",
-    "Montaña",
-    "Océano",
-    "Nativo",
-    "Solaria",
-    "Fresca",
-    "Quetzal",
-    "Riviera",
-    "Vértice",
-    "Néctar",
-    "Horizonte",
-    "Tundra",
-]
-CATEGORIES = ["Bebidas", "Limpieza", "Snacks", "Hogar", "Cuidado Personal"]
-CHANNELS = ["Retail", "Mayorista", "E-commerce", "Conveniencia", "Distribuidor"]
-REGIONS = ["Norte", "Centro", "Sur", "Occidente", "Oriente"]
-CLIENT_ORIGINS = ["Nuevo", "Existente", "Web", "Recomendación", "Campaña", "Mostrador", "Distribuidor"]
-SALE_ORIGINS = ["Web", "Tienda", "WhatsApp", "Teléfono", "Vendedor", "Marketplace", "Recomendación"]
-INVOICE_TYPES = ["Contado", "Crédito", "Nota", "Factura"]
-ORDER_TYPES = ["Pedido", "Remisión", "Cotización", "Backorder"]
-ORDER_STATUS = ["Surtido", "Parcial", "Pendiente", "Cancelado"]
-
-PRODUCT_NAMES = {
-    "Bebidas": ["Agua Mineral", "Jugo Natural", "Refresco Cola", "Té Frío", "Bebida Energética"],
-    "Limpieza": ["Detergente", "Limpiador Multiuso", "Desinfectante", "Jabón Líquido", "Lavavajillas"],
-    "Snacks": ["Papas", "Galletas", "Barra Cereal", "Frutos Secos", "Granola"],
-    "Hogar": ["Toalla", "Papel Higiénico", "Velas", "Ambientador", "Servilletas"],
-    "Cuidado Personal": ["Shampoo", "Crema Corporal", "Jabón de Manos", "Desodorante", "Acondicionador"],
+CATEGORIES = ["Abarrotes", "Bebidas", "Botanas", "Lácteos"]
+BRANDS_BY_CATEGORY = {
+    "Abarrotes": ["Bimbo", "Gamesa", "La Costeña", "Kellogg's", "Nestlé"],
+    "Bebidas": ["Coca-Cola", "Pepsi", "Jumex", "Bonafont", "Topo Chico"],
+    "Botanas": ["Sabritas", "Barcel", "Doritos", "Cheetos", "Pringles"],
+    "Lácteos": ["Lala", "Alpura", "Danone", "Nestlé", "Yoplait"],
 }
+PRODUCT_NAMES = {
+    "Abarrotes": ["Pan de caja", "Galletas surtidas", "Cereal", "Atún", "Arroz", "Pasta"],
+    "Bebidas": ["Refresco cola", "Jugo natural", "Agua mineral", "Té frío", "Bebida energética"],
+    "Botanas": ["Papas clásicas", "Nachos", "Palomitas", "Botana picosa", "Chips de maíz"],
+    "Lácteos": ["Leche entera", "Yogurt natural", "Queso panela", "Crema", "Mantequilla"],
+}
+PRESENTATIONS = ["250 ml", "355 ml", "500 ml", "1 L", "2 L", "90 g", "200 g", "500 g", "1 kg", "Caja 12"]
 
-PRESENTATIONS = ["250ml", "500ml", "1L", "2L", "500g", "1kg", "2kg", "Caja 12", "Caja 24"]
+REGIONS = ["Norte", "Centro", "Sur", "Occidente", "Oriente"]
+CLIENT_ORIGINS = ["Recomendación", "Google", "Facebook", "Volante", "Walk-in", "Marketplace", "Campaña"]
+SALE_ORIGINS = ["Mostrador", "Página web", "WhatsApp", "Marketplace", "Teléfono", "App", "Distribuidor"]
+RECOMM_SOURCES = [
+    "Encuesta NPS",
+    "Encuesta post-compra",
+    "Recomendación cliente",
+    "Google Reviews",
+    "Facebook",
+    "Sin encuesta",
+]
+
+INVOICE_TYPES = ["Factura", "Ticket", "Nota"]
+ORDER_TYPES = ["Entrega", "Pickup", "Envío"]
+INVOICE_STATUS = ["Emitida", "Cancelada", "Pendiente"]
+CREDIT_NOTE_REASONS = ["Devolución", "Descuento", "Producto dañado", "Ajuste comercial"]
 
 FIRST_NAMES = [
     "Ana",
@@ -68,11 +59,10 @@ FIRST_NAMES = [
     "Fernanda",
     "Iván",
 ]
-
 LAST_NAMES = ["Gómez", "López", "Rodríguez", "Pérez", "Martínez", "Santos", "Vega", "Ramírez"]
 
-COMPANY_PREFIX = ["Alimentos", "Distribuciones", "Comercial", "Servicios", "Grupo", "Mayoreo"]
-COMPANY_SUFFIX = ["Andina", "del Pacífico", "Latam", "Sur", "Global", "Norte", "Metropolitano"]
+COMPANY_PREFIX = ["Abarrotes", "Super", "Comercial", "Distribuciones", "Grupo", "Minisúper"]
+COMPANY_SUFFIX = ["Central", "del Centro", "Norte", "Express", "Premium", "Metropolitano"]
 
 
 @dataclass
@@ -83,7 +73,7 @@ class ExchangeRateSeries:
         return self.rates[value]
 
 
-def _rng(seed: int = 42) -> random.Random:
+def _rng(seed: int = 2024) -> random.Random:
     return random.Random(seed)
 
 
@@ -103,30 +93,39 @@ def _date_range(start: date, end: date) -> Iterable[date]:
 
 
 def _seasonality_factor(current: date) -> float:
-    month_factor = 1 + 0.18 * math.sin(2 * math.pi * (current.month - 1) / 12)
-    weekday = current.weekday()
-    weekday_factor = 1.1 if weekday in (0, 1, 2, 3) else 0.9 if weekday == 4 else 0.7
+    month_factor = 1 + 0.22 * math.sin(2 * math.pi * (current.month - 1) / 12)
+    if current.month in (11, 12):
+        month_factor *= 1.35
+    weekday_factor = 1.05 if current.weekday() < 4 else 0.85
     return month_factor * weekday_factor
 
 
 def _generate_exchange_rates(start: date, end: date, rng: random.Random) -> ExchangeRateSeries:
     rates: dict[date, float] = {}
-    current_rate = 18.2
+    current_rate = 17.8
     for current in _date_range(start, end):
-        drift = rng.uniform(-0.08, 0.08)
-        current_rate = max(16.0, min(20.5, current_rate + drift))
+        drift = rng.uniform(-0.06, 0.06)
+        current_rate = max(16.2, min(20.4, current_rate + drift))
         rates[current] = round(current_rate, 4)
     return ExchangeRateSeries(rates=rates)
 
 
-def generate_products(rng: random.Random, count: int = 2000) -> list[dict]:
+def generate_products(rng: random.Random, count: int = 320) -> list[dict]:
     products = []
+    price_ranges = {
+        "Abarrotes": (18, 120),
+        "Bebidas": (12, 80),
+        "Botanas": (10, 70),
+        "Lácteos": (15, 95),
+    }
     for idx in range(1, count + 1):
         category = rng.choice(CATEGORIES)
-        brand = rng.choice(BRANDS)
+        brand = rng.choice(BRANDS_BY_CATEGORY[category])
         name = rng.choice(PRODUCT_NAMES[category])
         presentation = rng.choice(PRESENTATIONS)
-        base_price = round(rng.uniform(8, 180), 2)
+        low, high = price_ranges[category]
+        price = round(rng.uniform(low, high), 2)
+        cost = round(price * rng.uniform(0.55, 0.75), 2)
         products.append(
             {
                 "PRODUCT_ID": idx,
@@ -134,16 +133,17 @@ def generate_products(rng: random.Random, count: int = 2000) -> list[dict]:
                 "PROD_NAME": f"{name} {presentation} {brand}",
                 "CATEGORY": category,
                 "BRAND": brand,
-                "BASE_PRICE": base_price,
-                "EXISTENCIA": 0,
-                "MIN_STOCK": 0,
-                "MAX_STOCK": 0,
+                "COST_MXN": cost,
+                "PRICE_MXN": price,
+                "STOCK_QTY": 0,
+                "MIN_STK": 0,
+                "MAX_STK": 0,
             }
         )
     return products
 
 
-def generate_clients(rng: random.Random, count: int = 650) -> list[dict]:
+def generate_clients(rng: random.Random, count: int = 420) -> list[dict]:
     clients = []
     for idx in range(1, count + 1):
         clients.append(
@@ -151,26 +151,24 @@ def generate_clients(rng: random.Random, count: int = 650) -> list[dict]:
                 "CLIENT_ID": idx,
                 "CLNT_NAME": _random_company(rng),
                 "REGION": rng.choice(REGIONS),
-                "CHANNEL": rng.choice(CHANNELS),
-                "CONTACT": _random_name(rng),
                 "ORIGEN_CLI": rng.choice(CLIENT_ORIGINS),
-                "LAST_PURCH": None,
+                "RECOM_SRC": rng.choice(RECOMM_SOURCES),
+                "CONTACT": _random_name(rng),
                 "STATUS": rng.choice(["Activo", "Inactivo"]),
+                "LAST_PCH": None,
             }
         )
     return clients
 
 
-def generate_vendors(rng: random.Random, count: int = 11) -> list[dict]:
+def generate_vendors(rng: random.Random, count: int = 10) -> list[dict]:
     vendors = []
     for idx in range(1, count + 1):
         name = _random_name(rng)
-        if idx == count:
-            name = "VENTAS GENERALES"
         vendors.append(
             {
-                "VENDOR_ID": idx,
-                "VEND_NAME": name,
+                "SELLER_ID": idx,
+                "SELLER_NM": name,
                 "REGION": rng.choice(REGIONS),
                 "TEAM": rng.choice(["A", "B", "C"]),
             }
@@ -186,55 +184,91 @@ def generate_sales(
     start: date,
     end: date,
     exchange_rates: ExchangeRateSeries,
-) -> list[dict]:
-    sales = []
+) -> tuple[list[dict], list[dict]]:
+    sales: list[dict] = []
+    facturas: list[dict] = []
     sale_id = 1
+    factura_id = 100000
     product_weights = [rng.uniform(0.8, 1.2) for _ in products]
-    client_weights = [rng.uniform(0.5, 1.8) for _ in clients]
-    vendor_weights = [rng.uniform(0.8, 1.4) for _ in vendors]
+    client_weights = [rng.uniform(0.6, 1.8) for _ in clients]
+    vendor_weights = [rng.uniform(0.9, 1.4) for _ in vendors]
 
     for sale_date in _date_range(start, end):
         seasonality = _seasonality_factor(sale_date)
-        daily_base = 65
-        daily_noise = rng.gauss(0, 8)
-        daily_sales = max(18, int(daily_base * seasonality + daily_noise))
-        for _ in range(daily_sales):
-            product = rng.choices(products, weights=product_weights, k=1)[0]
+        base_invoices = 40
+        invoice_noise = rng.gauss(0, 5)
+        daily_invoices = max(15, int(base_invoices * seasonality + invoice_noise))
+        for _ in range(daily_invoices):
             client = rng.choices(clients, weights=client_weights, k=1)[0]
             vendor = rng.choices(vendors, weights=vendor_weights, k=1)[0]
-            quantity = rng.randint(1, 14)
-            unit_price = round(product["BASE_PRICE"] * rng.uniform(0.9, 1.15), 2)
-            revenue_mxn = round(quantity * unit_price, 2)
-            tc_rate = exchange_rates.for_date(sale_date)
-            moneda = "USD" if rng.random() < 0.18 else "MXN"
-            if moneda == "USD":
-                revenue_usd = round(revenue_mxn / tc_rate, 2)
-            else:
-                revenue_usd = round(revenue_mxn / tc_rate, 2)
-            sales.append(
+            rate = exchange_rates.for_date(sale_date)
+            currency = "USD" if rng.random() < 0.15 else "MXN"
+            status = rng.choices(INVOICE_STATUS, weights=[0.8, 0.08, 0.12], k=1)[0]
+            invoice_type = rng.choice(INVOICE_TYPES)
+            order_type = rng.choice(ORDER_TYPES)
+            origin = rng.choice(SALE_ORIGINS)
+            recomm = rng.choice(RECOMM_SOURCES)
+            line_count = rng.randint(1, 5)
+            subtotal_mxn = 0.0
+
+            for _ in range(line_count):
+                product = rng.choices(products, weights=product_weights, k=1)[0]
+                quantity = rng.randint(1, 14)
+                unit_price = round(product["PRICE_MXN"] * rng.uniform(0.85, 1.18), 2)
+                amount_mxn = round(quantity * unit_price, 2)
+                amount_usd = round(amount_mxn / rate, 2)
+                sales.append(
+                    {
+                        "SALE_ID": sale_id,
+                        "FACT_ID": factura_id,
+                        "SALE_DATE": sale_date,
+                        "PRODUCT_ID": product["PRODUCT_ID"],
+                        "PROD_NAME": product["PROD_NAME"],
+                        "BRAND": product["BRAND"],
+                        "CATEGORY": product["CATEGORY"],
+                        "CLIENT_ID": client["CLIENT_ID"],
+                        "CLNT_NAME": client["CLNT_NAME"],
+                        "CLNT_ORIG": client["ORIGEN_CLI"],
+                        "SELLER_ID": vendor["SELLER_ID"],
+                        "SELLER_NM": vendor["SELLER_NM"],
+                        "ORIGEN_VT": origin,
+                        "RECOM_SRC": recomm,
+                        "TIPO_FACT": invoice_type,
+                        "TIPO_ORDN": order_type,
+                        "STATUS": status,
+                        "QTY": quantity,
+                        "UNIT_MXN": unit_price,
+                        "AMT_MXN": amount_mxn,
+                        "AMT_USD": amount_usd,
+                        "MONEDA": currency,
+                        "USD_MXN": rate,
+                    }
+                )
+                sale_id += 1
+                subtotal_mxn += amount_mxn
+
+            facturas.append(
                 {
-                    "SALE_ID": sale_id,
-                    "SALE_DATE": sale_date,
-                    "PRODUCT_ID": product["PRODUCT_ID"],
+                    "FACT_ID": factura_id,
+                    "FECHA": sale_date,
                     "CLIENT_ID": client["CLIENT_ID"],
-                    "VENDOR_ID": vendor["VENDOR_ID"],
-                    "BRAND": product["BRAND"],
-                    "CATEGORY": product["CATEGORY"],
-                    "CHANNEL": client["CHANNEL"],
-                    "REGION": client["REGION"],
-                    "ORIGEN_VTA": rng.choice(SALE_ORIGINS),
-                    "TIPO_FACT": rng.choice(INVOICE_TYPES),
-                    "TIPO_ORDEN": rng.choice(ORDER_TYPES),
-                    "MONEDA": moneda,
-                    "TC_MXN_USD": tc_rate,
-                    "QUANTITY": quantity,
-                    "UNIT_PRICE": unit_price,
-                    "REVENUE": revenue_mxn,
-                    "REV_USD": revenue_usd,
+                    "CLNT_NAME": client["CLNT_NAME"],
+                    "SELLER_ID": vendor["SELLER_ID"],
+                    "SELLER_NM": vendor["SELLER_NM"],
+                    "STATUS": status,
+                    "TIPO_FACT": invoice_type,
+                    "TIPO_ORDN": order_type,
+                    "ORIGEN_VT": origin,
+                    "RECOM_SRC": recomm,
+                    "MONEDA": currency,
+                    "SUBT_MXN": round(subtotal_mxn, 2),
+                    "TOTAL_MXN": round(subtotal_mxn * 1.16, 2),
+                    "AMT_USD": round(subtotal_mxn / rate, 2),
+                    "USD_MXN": rate,
                 }
             )
-            sale_id += 1
-    return sales
+            factura_id += 1
+    return sales, facturas
 
 
 def generate_pedidos(
@@ -248,35 +282,61 @@ def generate_pedidos(
     pedidos = []
     order_id = 1
     for order_date in _date_range(start, end):
-        daily_orders = max(6, int(rng.gauss(10, 3)))
+        daily_orders = max(6, int(rng.gauss(12, 4)))
         for _ in range(daily_orders):
             product = rng.choice(products)
             client = rng.choice(clients)
             vendor = rng.choice(vendors)
             qty_order = rng.randint(1, 20)
-            status = rng.choices(ORDER_STATUS, weights=[0.55, 0.2, 0.2, 0.05], k=1)[0]
-            if status == "Parcial":
-                qty_pending = rng.randint(1, max(1, qty_order - 1))
-            elif status == "Pendiente":
-                qty_pending = qty_order
-            else:
-                qty_pending = 0
+            status = rng.choices(["Surtido", "Parcial", "Pendiente", "Cancelado"], weights=[0.55, 0.2, 0.2, 0.05], k=1)[0]
+            qty_pending = qty_order if status == "Pendiente" else rng.randint(0, max(0, qty_order - 1))
             pedidos.append(
                 {
                     "ORDER_ID": order_id,
                     "ORDER_DATE": order_date,
                     "CLIENT_ID": client["CLIENT_ID"],
-                    "VENDOR_ID": vendor["VENDOR_ID"],
+                    "CLNT_NAME": client["CLNT_NAME"],
+                    "SELLER_ID": vendor["SELLER_ID"],
+                    "SELLER_NM": vendor["SELLER_NM"],
                     "PRODUCT_ID": product["PRODUCT_ID"],
+                    "PROD_NAME": product["PROD_NAME"],
                     "QTY_ORDER": qty_order,
                     "QTY_PEND": qty_pending,
                     "STATUS": status,
-                    "ORIGEN_VTA": rng.choice(SALE_ORIGINS),
-                    "TIPO_ORDEN": rng.choice(ORDER_TYPES),
+                    "ORIGEN_VT": rng.choice(SALE_ORIGINS),
+                    "TIPO_ORDN": rng.choice(ORDER_TYPES),
                 }
             )
             order_id += 1
     return pedidos
+
+
+def generate_notas_credito(
+    rng: random.Random,
+    facturas: list[dict],
+    start: date,
+    end: date,
+) -> list[dict]:
+    notes = []
+    note_id = 5000
+    eligible = [invoice for invoice in facturas if invoice["STATUS"] == "Emitida"]
+    sample = rng.sample(eligible, k=max(1, int(len(eligible) * 0.04)))
+    for invoice in sample:
+        note_date = invoice["FECHA"] + timedelta(days=rng.randint(1, 18))
+        if note_date > end:
+            note_date = end
+        notes.append(
+            {
+                "NOTA_ID": note_id,
+                "FACT_ID": invoice["FACT_ID"],
+                "FECHA": note_date,
+                "CLIENT_ID": invoice["CLIENT_ID"],
+                "MONTO_MXN": round(invoice["SUBT_MXN"] * rng.uniform(0.05, 0.2), 2),
+                "MOTIVO": rng.choice(CREDIT_NOTE_REASONS),
+            }
+        )
+        note_id += 1
+    return notes
 
 
 def _assign_stock(
@@ -290,15 +350,15 @@ def _assign_stock(
     for sale in sales:
         if sale["SALE_DATE"] < recent_start:
             continue
-        sold_by_product[sale["PRODUCT_ID"]] = sold_by_product.get(sale["PRODUCT_ID"], 0) + sale["QUANTITY"]
+        sold_by_product[sale["PRODUCT_ID"]] = sold_by_product.get(sale["PRODUCT_ID"], 0) + sale["QTY"]
     for product in products:
         sold_units = sold_by_product.get(product["PRODUCT_ID"], 0)
-        base_stock = max(15, int(sold_units * rng.uniform(0.8, 1.6) + rng.randint(20, 180)))
-        min_stock = max(5, int(base_stock * rng.uniform(0.15, 0.25)))
+        base_stock = max(20, int(sold_units * rng.uniform(0.8, 1.6) + rng.randint(30, 200)))
+        min_stock = max(8, int(base_stock * rng.uniform(0.15, 0.25)))
         max_stock = int(base_stock * rng.uniform(1.3, 1.8))
-        product["EXISTENCIA"] = base_stock
-        product["MIN_STOCK"] = min_stock
-        product["MAX_STOCK"] = max_stock
+        product["STOCK_QTY"] = base_stock
+        product["MIN_STK"] = min_stock
+        product["MAX_STK"] = max_stock
 
 
 def _assign_client_last_purchase(rng: random.Random, clients: list[dict], sales: list[dict], end: date) -> None:
@@ -309,9 +369,7 @@ def _assign_client_last_purchase(rng: random.Random, clients: list[dict], sales:
         if client_id not in last_purchase or sale_date > last_purchase[client_id]:
             last_purchase[client_id] = sale_date
     for client in clients:
-        client["LAST_PURCH"] = last_purchase.get(
-            client["CLIENT_ID"], end - timedelta(days=rng.randint(120, 900))
-        )
+        client["LAST_PCH"] = last_purchase.get(client["CLIENT_ID"], end - timedelta(days=rng.randint(120, 900)))
 
 
 def _write_dbf(path: Path, schema: str, rows: list[dict]) -> None:
@@ -328,53 +386,71 @@ def _write_dbf(path: Path, schema: str, rows: list[dict]) -> None:
 def generate_dbf_dataset(output_dir: Path) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     rng = _rng()
-    end_date = date.today()
+    end_date = date(2026, 1, 31)
     start_date = end_date - timedelta(days=365 * 4)
 
     products = generate_products(rng)
     clients = generate_clients(rng)
     vendors = generate_vendors(rng)
     exchange_rates = _generate_exchange_rates(start_date, end_date, rng)
-    sales = generate_sales(rng, products, clients, vendors, start_date, end_date, exchange_rates)
+    sales, facturas = generate_sales(rng, products, clients, vendors, start_date, end_date, exchange_rates)
     pedidos = generate_pedidos(rng, products, clients, vendors, end_date - timedelta(days=120), end_date)
+    notas_credito = generate_notas_credito(rng, facturas, start_date, end_date)
 
     _assign_stock(rng, products, sales, end_date)
     _assign_client_last_purchase(rng, clients, sales, end_date)
 
     _write_dbf(
         output_dir / "productos.dbf",
-        "PRODUCT_ID N(6,0); SKU C(12); PROD_NAME C(60); CATEGORY C(30); BRAND C(30); BASE_PRICE N(10,2); "
-        "EXISTENCIA N(8,0); MIN_STOCK N(6,0); MAX_STOCK N(6,0)",
+        "PRODUCT_ID N(6,0); SKU C(12); PROD_NAME C(70); CATEGORY C(20); BRAND C(20); "
+        "COST_MXN N(10,2); PRICE_MXN N(10,2); STOCK_QTY N(8,0); MIN_STK N(6,0); MAX_STK N(6,0)",
         products,
     )
     _write_dbf(
         output_dir / "clientes.dbf",
-        "CLIENT_ID N(6,0); CLNT_NAME C(60); REGION C(20); CHANNEL C(20); CONTACT C(40); "
-        "ORIGEN_CLI C(20); LAST_PURCH D; STATUS C(12)",
+        "CLIENT_ID N(6,0); CLNT_NAME C(60); REGION C(20); ORIGEN_CLI C(25); "
+        "RECOM_SRC C(30); CONTACT C(40); STATUS C(12); LAST_PCH D",
         clients,
     )
     _write_dbf(
         output_dir / "vendedores.dbf",
-        "VENDOR_ID N(6,0); VEND_NAME C(40); REGION C(20); TEAM C(5)",
+        "SELLER_ID N(6,0); SELLER_NM C(40); REGION C(20); TEAM C(5)",
         vendors,
     )
     _write_dbf(
         output_dir / "ventas.dbf",
-        "SALE_ID N(10,0); SALE_DATE D; PRODUCT_ID N(6,0); CLIENT_ID N(6,0); VENDOR_ID N(6,0); "
-        "BRAND C(30); CATEGORY C(30); CHANNEL C(20); REGION C(20); ORIGEN_VTA C(20); "
-        "TIPO_FACT C(15); TIPO_ORDEN C(15); MONEDA C(3); TC_MXN_USD N(8,4); "
-        "QUANTITY N(6,0); UNIT_PRICE N(10,2); REVENUE N(12,2); REV_USD N(12,2)",
+        "SALE_ID N(10,0); FACT_ID N(10,0); SALE_DATE D; PRODUCT_ID N(6,0); "
+        "PROD_NAME C(70); BRAND C(20); CATEGORY C(20); CLIENT_ID N(6,0); "
+        "CLNT_NAME C(60); CLNT_ORIG C(25); SELLER_ID N(6,0); SELLER_NM C(40); "
+        "ORIGEN_VT C(20); RECOM_SRC C(30); TIPO_FACT C(12); TIPO_ORDN C(12); "
+        "STATUS C(12); QTY N(6,0); UNIT_MXN N(10,2); AMT_MXN N(12,2); "
+        "AMT_USD N(12,2); MONEDA C(3); USD_MXN N(8,4)",
         sales,
     )
     _write_dbf(
-        output_dir / "tcambio.dbf",
-        "FECHA D; TC_MXN_USD N(8,4)",
-        [{"FECHA": k, "TC_MXN_USD": v} for k, v in exchange_rates.rates.items()],
+        output_dir / "tipo_cambio.dbf",
+        "DATE D; USD_MXN N(8,4)",
+        [{"DATE": k, "USD_MXN": v} for k, v in exchange_rates.rates.items()],
+    )
+    _write_dbf(
+        output_dir / "facturas.dbf",
+        "FACT_ID N(10,0); FECHA D; CLIENT_ID N(6,0); CLNT_NAME C(60); "
+        "SELLER_ID N(6,0); SELLER_NM C(40); STATUS C(12); TIPO_FACT C(12); "
+        "TIPO_ORDN C(12); ORIGEN_VT C(20); RECOM_SRC C(30); MONEDA C(3); "
+        "SUBT_MXN N(12,2); TOTAL_MXN N(12,2); AMT_USD N(12,2); USD_MXN N(8,4)",
+        facturas,
+    )
+    _write_dbf(
+        output_dir / "notas_credito.dbf",
+        "NOTA_ID N(10,0); FACT_ID N(10,0); FECHA D; CLIENT_ID N(6,0); MONTO_MXN N(12,2); "
+        "MOTIVO C(30)",
+        notas_credito,
     )
     _write_dbf(
         output_dir / "pedidos.dbf",
-        "ORDER_ID N(10,0); ORDER_DATE D; CLIENT_ID N(6,0); VENDOR_ID N(6,0); PRODUCT_ID N(6,0); "
-        "QTY_ORDER N(6,0); QTY_PEND N(6,0); STATUS C(12); ORIGEN_VTA C(20); TIPO_ORDEN C(15)",
+        "ORDER_ID N(10,0); ORDER_DATE D; CLIENT_ID N(6,0); CLNT_NAME C(60); "
+        "SELLER_ID N(6,0); SELLER_NM C(40); PRODUCT_ID N(6,0); PROD_NAME C(70); "
+        "QTY_ORDER N(6,0); QTY_PEND N(6,0); STATUS C(12); ORIGEN_VT C(20); TIPO_ORDN C(12)",
         pedidos,
     )
 
@@ -383,6 +459,8 @@ def generate_dbf_dataset(output_dir: Path) -> dict[str, Path]:
         "clientes": output_dir / "clientes.dbf",
         "vendedores": output_dir / "vendedores.dbf",
         "ventas": output_dir / "ventas.dbf",
-        "tcambio": output_dir / "tcambio.dbf",
+        "tipo_cambio": output_dir / "tipo_cambio.dbf",
+        "facturas": output_dir / "facturas.dbf",
+        "notas_credito": output_dir / "notas_credito.dbf",
         "pedidos": output_dir / "pedidos.dbf",
     }

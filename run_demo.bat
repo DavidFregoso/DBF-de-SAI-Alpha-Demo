@@ -15,7 +15,17 @@ if errorlevel 1 exit /b 1
 pip install -r requirements.txt
 if errorlevel 1 exit /b 1
 
-python generate_dbfs.py
+set "DBF_DIR=%CD%\data\dbf"
+if not exist "%DBF_DIR%" mkdir "%DBF_DIR%"
+set "SAI_ALPHA_DBF_DIR=%DBF_DIR%"
+
+set "DBF_COUNT=0"
+for /f %%A in ('dir /b "%DBF_DIR%\*.dbf" 2^>nul') do set /a DBF_COUNT+=1
+if %DBF_COUNT% LSS 1 (
+  echo Generating mock DBF data...
+  python generate_dbfs.py
+  if errorlevel 1 exit /b 1
+)
 
 set "PORT="
 for /l %%P in (8501,1,8510) do (

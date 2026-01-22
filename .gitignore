@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Generated data/artifacts
+data/dbf/*.dbf
+app/data/dbf/*.dbf
+*.dbf
+*.log
+
+# Build outputs
+build/
+dist/
+
+# Binary artifacts (strict no-binary policy)
+*.zip
+*.exe
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.docx

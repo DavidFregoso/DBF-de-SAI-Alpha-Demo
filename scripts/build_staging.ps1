@@ -84,6 +84,9 @@ Copy-Item -Path (Join-Path $repoRoot "sai_alpha") -Destination (Join-Path $appDi
 if (Test-Path (Join-Path $repoRoot "pages")) {
     Copy-Item -Path (Join-Path $repoRoot "pages") -Destination (Join-Path $appDir "pages") -Recurse
 }
+if (Test-Path (Join-Path $repoRoot "assets")) {
+    Copy-Item -Path (Join-Path $repoRoot "assets") -Destination (Join-Path $appDir "assets") -Recurse
+}
 
 $startDemoPath = Join-Path $stagingDir "StartDemo.cmd"
 @"
@@ -105,6 +108,7 @@ if not exist "%PYTHON_EXE%" (
 set "DBF_DIR=%APP_DIR%\data\dbf"
 if not exist "%DBF_DIR%" mkdir "%DBF_DIR%"
 set "SAI_ALPHA_DBF_DIR=%DBF_DIR%"
+set "PYTHONPATH=%APP_DIR%"
 echo DBF dir: %SAI_ALPHA_DBF_DIR%
 
 pushd "%APP_DIR%" >nul

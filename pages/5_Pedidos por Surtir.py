@@ -12,6 +12,7 @@ from sai_alpha.ui import (
     format_integer_column,
     load_orders,
     load_sales,
+    plotly_colors,
     render_sidebar_filters,
     table_height,
 )
@@ -29,8 +30,8 @@ if ventas.empty:
 
 filters = render_sidebar_filters(ventas, pedidos)
 
-st.markdown("<div class='app-header'>Abarrotes Demo</div>", unsafe_allow_html=True)
-st.caption("Dashboard Ejecutivo SAI Alpha (Demo)")
+st.markdown("<div class='app-header'>Demo Tienda – Dashboard Ejecutivo</div>", unsafe_allow_html=True)
+st.caption("Abarrotes / Bebidas / Botanas / Lácteos")
 
 st.title("Pedidos por Surtir")
 
@@ -40,7 +41,7 @@ if filters.pedidos is None or filters.pedidos.empty:
 
 pending = filters.pedidos.copy()
 pending = pending[pending["STATUS"].isin(["Pendiente", "Parcial"])].copy()
-pending["PENDING_VALUE"] = pending["QTY_PENDING"] * pending["BASE_PRICE"].fillna(0)
+pending["PENDING_VALUE"] = pending["QTY_PENDING"] * pending["PRICE_MXN"].fillna(0)
 pending["AGE_DAYS"] = (filters.end_date - pending["ORDER_DATE"].dt.date).apply(lambda x: x.days)
 
 pending_count = pending["ORDER_ID"].nunique()
@@ -51,7 +52,7 @@ col1, col2, col3, col4 = st.columns(4)
 col1.metric("Pedidos pendientes", f"{pending_count:,}")
 col2.metric("Unidades pendientes", f"{pending['QTY_PENDING'].sum():,}")
 col3.metric("Valor pendiente", f"$ {pending_value:,.2f}")
-col4.metric("Edad promedio", f"{avg_age:.1f} días")
+col4.metric("Edad promedio", f"{avg_age:.2f} días")
 
 st.markdown("### Aging de pedidos")
 aging_bins = pd.cut(
@@ -68,13 +69,14 @@ fig_aging = px.bar(
     x="Aging",
     y="valor",
     title="Valor pendiente por antigüedad",
+    color_discrete_sequence=plotly_colors(),
 )
 fig_aging.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
 st.plotly_chart(fig_aging, use_container_width=True)
 
 st.markdown("### Pendientes por vendedor")
 by_vendor = (
-    pending.groupby("VENDOR_NAME")
+    pending.groupby("SELLER_NAME")
     .agg(pedidos=("ORDER_ID", "nunique"), valor=("PENDING_VALUE", "sum"))
     .reset_index()
     .sort_values("valor", ascending=False)
@@ -85,7 +87,7 @@ st.dataframe(
     use_container_width=True,
     height=table_height(len(by_vendor)),
     column_config={
-        "VENDOR_NAME": "Vendedor",
+        "SELLER_NAME": "Vendedor",
         "pedidos": format_integer_column("Pedidos"),
         "valor": format_currency_column("Valor pendiente"),
     },

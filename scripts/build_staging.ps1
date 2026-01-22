@@ -1,31 +1,9 @@
 param(
-    [string]$PythonVersion = "",
+    [string]$PythonVersion = "3.11.9",
     [string]$Architecture = "amd64"
 )
 
 $ErrorActionPreference = "Stop"
-
-$requiredArchitecture = "64bit"
-
-$pyLauncher = Get-Command py -ErrorAction SilentlyContinue
-if (-not $pyLauncher) {
-    throw "Python launcher (py) not found. Install Python 3.11 x64 to build the installer."
-}
-
-$pyInfo = & py -3.11 -c "import platform, sys; print(sys.version.split()[0]); print(platform.architecture()[0])" 2>$null
-if ($LASTEXITCODE -ne 0 -or -not $pyInfo) {
-    throw "Python 3.11 not found via 'py -3.11'. Install Python 3.11 x64 to build the installer."
-}
-
-$pyVersion = $pyInfo[0]
-$pyArch = $pyInfo[1]
-if (-not $pyVersion.StartsWith("3.11.") -or $pyArch -ne $requiredArchitecture) {
-    throw "Python 3.11 x64 is required. Detected $pyVersion $pyArch via 'py -3.11'."
-}
-
-if ([string]::IsNullOrWhiteSpace($PythonVersion)) {
-    $PythonVersion = $pyVersion
-}
 
 if (-not $PythonVersion.StartsWith("3.11.")) {
     throw "PythonVersion must be 3.11.x for the embeddable runtime. Received $PythonVersion."

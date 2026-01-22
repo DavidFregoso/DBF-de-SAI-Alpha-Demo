@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pandas as pd
 from dbfread import DBF
-import streamlit as st
 
 
 @dataclass
@@ -34,10 +33,22 @@ COMMON_ALIASES: dict[str, list[str]] = {
         "DESC",
         "ARTICULO",
         "ITEM_NAME",
+        "ITEM",
+        "NOM_ART",
     ],
-    "BRAND": ["BRAND", "MARCA", "BRANDS"],
-    "CATEGORY": ["CATEGORY", "CATEGORIA", "CAT"],
-    "EXISTENCIA": ["EXISTENCIA", "STOCK", "EXIST", "ON_HAND", "INV", "INVENTARIO"],
+    "BRAND": ["BRAND", "MARCA", "BRANDS", "LINEA", "FABRICANTE"],
+    "CATEGORY": ["CATEGORY", "CATEGORIA", "CAT", "DEPTO", "DEPARTAMENTO"],
+    "STOCK_QTY": [
+        "STOCK_QTY",
+        "EXISTENCIA",
+        "STOCK",
+        "EXIST",
+        "ON_HAND",
+        "INVENTARIO",
+        "CANTIDAD_EXIST",
+        "QTY_ON_HAND",
+    ],
+    "DAYS_INVENTORY": ["DAYS_INVENTORY", "DIAS_INVENTARIO", "DAYS_STOCK", "DAYS_ON_HAND", "DAYS_INV"],
     "DATE": ["DATE", "FECHA", "FEC", "EMISION", "FACT_DATE"],
     "AMOUNT_MXN": ["AMOUNT_MXN", "REVENUE", "AMT_MXN", "TOTAL_MXN", "MONTO_MXN", "IMPORTE_MXN"],
     "AMOUNT_USD": ["AMOUNT_USD", "REV_USD", "REVENUE_USD", "AMT_USD", "TOTAL_USD", "MONTO_USD", "IMPORTE_USD"],
@@ -127,10 +138,8 @@ TABLE_ALIASES: dict[str, dict[str, list[str]]] = {
     },
 }
 
-PRODUCT_NAME_REQUIRED = {"ventas", "productos", "pedidos"}
-
 STRING_COLUMNS = {"PRODUCT_ID", "PRODUCT_NAME", "BRAND", "CATEGORY", "SELLER_ID", "SELLER_NAME", "VENDOR_ID"}
-NUMERIC_COLUMNS = {"EXISTENCIA", "AMOUNT_MXN", "AMOUNT_USD", "STOCK_QTY"}
+NUMERIC_COLUMNS = {"EXISTENCIA", "AMOUNT_MXN", "AMOUNT_USD", "STOCK_QTY", "DAYS_INVENTORY"}
 DATE_COLUMNS = {"SALE_DATE", "ORDER_DATE", "DATE"}
 
 
@@ -182,15 +191,6 @@ def normalize_columns(df: pd.DataFrame, table_name: str, source_path: Path) -> p
         normalized["STOCK_QTY"] = normalized["EXISTENCIA"]
     if "SELLER_ID" in normalized.columns and "VENDOR_ID" not in normalized.columns:
         normalized["VENDOR_ID"] = normalized["SELLER_ID"]
-
-    if table_name.lower() in PRODUCT_NAME_REQUIRED and "PRODUCT_NAME" not in normalized.columns:
-        available = ", ".join(normalized.columns)
-        message = (
-            "No se encontró la columna PRODUCT_NAME después de normalizar. "
-            f"DBF cargado: {source_path}. Columnas disponibles: {available}"
-        )
-        st.error(message)
-        st.stop()
 
     return normalized
 

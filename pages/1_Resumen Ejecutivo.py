@@ -21,6 +21,7 @@ from sai_alpha.ui import (
     render_sidebar_filters,
     table_height,
 )
+from sai_alpha.etl import resolve_dbf_dir
 
 
 st.set_page_config(page_title="Resumen Ejecutivo", page_icon="📊", layout="wide")
@@ -91,6 +92,19 @@ inventory["DAYS_INVENTORY"] = inventory.apply(
 )
 low_stock = inventory.sort_values("DAYS_INVENTORY").head(10)
 overstock = inventory.sort_values("DAYS_INVENTORY", ascending=False).head(10)
+
+required_inventory_columns = ["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]
+missing_inventory_columns = [col for col in required_inventory_columns if col not in low_stock.columns]
+if missing_inventory_columns:
+    st.error(
+        "Faltan columnas requeridas para 'Productos por agotarse': "
+        + ", ".join(missing_inventory_columns)
+    )
+    dbf_path = resolve_dbf_dir() / "productos.dbf"
+    st.write("Fuente DBF:", str(dbf_path))
+    st.write("Columnas normalizadas:", list(inventory.columns))
+    st.write("Columnas disponibles:", list(low_stock.columns))
+    st.stop()
 
 col_low, col_high = st.columns(2)
 with col_low:

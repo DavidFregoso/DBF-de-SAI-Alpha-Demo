@@ -18,13 +18,15 @@ REQUIRED_DBF_FILES = ("ventas.dbf", "productos.dbf", "clientes.dbf", "vendedores
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_bundle(dbf_dir: Path) -> dict[str, pd.DataFrame]:
+def load_bundle(dbf_dir: Path) -> dict[str, pd.DataFrame | None]:
     bundle = load_data(dbf_dir)
     return {
         "ventas": bundle.ventas,
         "productos": bundle.productos,
         "clientes": bundle.clientes,
         "vendedores": bundle.vendedores,
+        "pedidos": bundle.pedidos,
+        "tcambio": bundle.tcambio,
     }
 
 
@@ -159,7 +161,7 @@ def _trend_orders(
     return current_orders, delta
 
 
-def render_ventas(ventas: pd.DataFrame, filters: dict) -> None:
+def render_ventas(ventas: pd.DataFrame, filters: dict, pedidos: pd.DataFrame | None) -> None:
     start, end = filters["date_range"]
     filtered = filter_sales(ventas, (pd.Timestamp(start), pd.Timestamp(end)), filters["brands"], filters["vendors"])
     filtered = _apply_week_filter(filtered, filters["weeks"])
@@ -170,9 +172,17 @@ def render_ventas(ventas: pd.DataFrame, filters: dict) -> None:
     current_orders, delta_orders = _trend_orders(ventas, start, end, filters["brands"], filters["vendors"])
     last_date = filtered["SALE_DATE"].max() if not filtered.empty else pd.Timestamp(end)
     last_week = last_date - timedelta(days=6)
-    pending_orders = (
-        filtered[filtered["SALE_DATE"] >= last_week]["SALE_ID"].nunique() if not filtered.empty else 0
-    )
+    if pedidos is not None and not pedidos.empty and "STATUS" in pedidos.columns:
+        pending_scope = pedidos[
+            (pedidos["ORDER_DATE"] >= pd.Timestamp(start))
+            & (pedidos["ORDER_DATE"] <= pd.Timestamp(end))
+            & (pedidos["STATUS"].isin(["Pendiente", "Parcial"]))
+        ]
+        pending_orders = pending_scope["ORDER_ID"].nunique()
+    else:
+        pending_orders = (
+            filtered[filtered["SALE_DATE"] >= last_week]["SALE_ID"].nunique() if not filtered.empty else 0
+        )
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Facturación (MXN)", f"$ {total_revenue:,.2f}")
@@ -261,7 +271,12 @@ def render_clientes(ventas: pd.DataFrame, filters: dict) -> None:
 
     st.header("Clientes")
     total_mxn = filtered["REVENUE"].sum()
-    total_usd = total_mxn / USD_RATE
+    if "REVENUE_USD" in filtered.columns:
+        total_usd = filtered["REVENUE_USD"].sum()
+    elif "TC_MXN_USD" in filtered.columns:
+        total_usd = (filtered["REVENUE"] / filtered["TC_MXN_USD"]).sum()
+    else:
+        total_usd = total_mxn / USD_RATE
     distinct_clients = filtered["CLIENT_ID"].nunique()
 
     col1, col2, col3 = st.columns(3)
@@ -290,8 +305,15 @@ def render_clientes(ventas: pd.DataFrame, filters: dict) -> None:
     st.dataframe(client_table, use_container_width=True)
 
     st.subheader("Desglose por ORIGIN")
+    origin_column = "ORIGEN_CLI" if "ORIGEN_CLI" in filtered.columns else "REGION"
+    if "REVENUE_USD" in filtered.columns:
+        usd_series = filtered["REVENUE_USD"]
+    elif "TC_MXN_USD" in filtered.columns:
+        usd_series = filtered["REVENUE"] / filtered["TC_MXN_USD"]
+    else:
+        usd_series = filtered["REVENUE"] / USD_RATE
     origin_data = (
-        filtered.assign(ORIGIN=filtered["REGION"], USD=filtered["REVENUE"] / USD_RATE)
+        filtered.assign(ORIGIN=filtered[origin_column], USD=usd_series)
         .groupby("ORIGIN")
         .agg(
             CLIENTES=("CLIENT_ID", "nunique"),
@@ -476,7 +498,7 @@ def main() -> None:
     filters = _sidebar_filters(ventas)
 
     if filters["page"] == "Ventas":
-        render_ventas(ventas, filters)
+        render_ventas(ventas, filters, bundle.get("pedidos"))
     elif filters["page"] == "Clientes":
         render_clientes(ventas, filters)
     else:

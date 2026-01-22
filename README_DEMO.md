@@ -39,12 +39,19 @@ Construir un demo local en Python que simule un flujo completo con DBF (xBase):
 - `dbf_inspector.py`: lista tablas, campos, tipos y muestras para mapear un Alpha real.
 - `streamlit_app.py`: dashboard ejecutivo principal.
 
+## Novedades de la fase 1
+- Navegación por páginas con filtros globales (periodo, granularidad y moneda).
+- Paneles de clientes, vendedores, inventario y pedidos por surtir.
+- Exportación CSV/Excel con detección automática de engine.
+
 ## Criterios de “Done”
 - El demo levanta correctamente en **http://localhost:PUERTO** (8501-8510).
 - Se muestran las páginas:
-  - Resumen
+  - Resumen Ejecutivo
   - Clientes
   - Vendedores
-  - Productos
-- Filtros por fecha, marca y vendedor disponibles.
+  - Productos & Inventario
+  - Pedidos por Surtir
+  - Configuración
+- Filtros globales por fecha, granularidad y moneda disponibles.
 - Exportación CSV/Excel disponible para tablas relevantes.

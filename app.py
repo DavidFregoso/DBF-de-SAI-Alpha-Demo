@@ -3,7 +3,13 @@ from __future__ import annotations
 import streamlit as st
 
 from sai_alpha.etl import resolve_dbf_dir
-from sai_alpha.filters import AdvancedFilterContext, build_advanced_filters, build_filter_state, build_global_filters
+from sai_alpha.filters import (
+    AdvancedFilterContext,
+    FilterState,
+    build_advanced_filters,
+    build_filter_state,
+    build_global_filters,
+)
 from sai_alpha.sections import clientes, configuracion, productos, resumen, vendedores
 from sai_alpha.sections import pedidos as pedidos_section
 from sai_alpha.state import init_state_once
@@ -49,6 +55,38 @@ def _run_schema_checks() -> None:
     st.caption("Schema check: " + " | ".join(results))
 
 
+def build_sidebar(
+    ventas,
+    pedidos_df,
+    sections: list[str],
+) -> tuple[str, FilterState]:
+    st.sidebar.markdown("**Demo Tienda – Dashboard Ejecutivo**")
+    st.sidebar.divider()
+
+    st.session_state.setdefault("nav_section", sections[0])
+    selected = st.sidebar.selectbox("Sección", sections, key="nav_section")
+
+    with st.sidebar.expander("Filtros globales", expanded=True):
+        global_filters = build_global_filters(ventas)
+        advanced_context = AdvancedFilterContext(
+            brands=selected in {"Resumen Ejecutivo", "Clientes", "Vendedores", "Productos"},
+            categories=selected in {"Resumen Ejecutivo", "Productos"},
+            vendors=selected
+            in {"Resumen Ejecutivo", "Clientes", "Vendedores", "Productos", "Pedidos por Surtir"},
+            sale_origins=selected
+            in {"Resumen Ejecutivo", "Clientes", "Vendedores", "Productos", "Pedidos por Surtir"},
+            client_origins=selected in {"Resumen Ejecutivo", "Clientes", "Productos"},
+            recommendation_sources=selected in {"Resumen Ejecutivo", "Clientes", "Productos"},
+            invoice_types=selected in {"Resumen Ejecutivo", "Clientes", "Productos"},
+            order_types=selected in {"Resumen Ejecutivo", "Clientes", "Productos", "Pedidos por Surtir"},
+            order_statuses=selected == "Pedidos por Surtir",
+        )
+        advanced_filters = build_advanced_filters(ventas, pedidos_df, advanced_context)
+
+    filters = build_filter_state(ventas, pedidos_df, global_filters, advanced_filters)
+    return selected, filters
+
+
 def run_app() -> None:
     st.set_page_config(page_title="Demo Tienda – Dashboard Ejecutivo", page_icon="🛒", layout="wide")
     _run_schema_checks()
@@ -72,31 +110,7 @@ def run_app() -> None:
         "Pedidos por Surtir",
         "Configuración",
     ]
-    st.session_state.setdefault("nav_section", sections[0])
-    selected = st.session_state["nav_section"]
-
-    st.sidebar.markdown("**Demo Tienda**")
-    st.sidebar.caption("Dashboard Ejecutivo")
-    st.sidebar.divider()
-
-    global_filters = build_global_filters(ventas)
-    advanced_context = AdvancedFilterContext(
-        brands=selected in {"Resumen Ejecutivo", "Clientes", "Vendedores", "Productos"},
-        categories=selected in {"Resumen Ejecutivo", "Productos"},
-        vendors=selected
-        in {"Resumen Ejecutivo", "Clientes", "Vendedores", "Productos", "Pedidos por Surtir"},
-        sale_origins=selected
-        in {"Resumen Ejecutivo", "Clientes", "Vendedores", "Productos", "Pedidos por Surtir"},
-        client_origins=selected in {"Resumen Ejecutivo", "Clientes", "Productos"},
-        recommendation_sources=selected in {"Resumen Ejecutivo", "Clientes", "Productos"},
-        invoice_types=selected in {"Resumen Ejecutivo", "Clientes", "Productos"},
-        order_types=selected in {"Resumen Ejecutivo", "Clientes", "Productos", "Pedidos por Surtir"},
-        order_statuses=selected == "Pedidos por Surtir",
-    )
-    advanced_filters = build_advanced_filters(ventas, pedidos_df, advanced_context)
-    st.sidebar.selectbox("Menú", sections, key="nav_section")
-
-    filters = build_filter_state(ventas, pedidos_df, global_filters, advanced_filters)
+    selected, filters = build_sidebar(ventas, pedidos_df, sections)
 
     if selected == "Resumen Ejecutivo":
         resumen.render(filters, bundle, ventas, pedidos_df)

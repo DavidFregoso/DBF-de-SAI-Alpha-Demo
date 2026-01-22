@@ -130,7 +130,7 @@ def generate_products(rng: random.Random, count: int = 320) -> list[dict]:
             {
                 "PRODUCT_ID": idx,
                 "SKU": f"SKU{idx:05d}",
-                "PROD_NAME": f"{name} {presentation} {brand}",
+                "PRODUCT_NAME": f"{name} {presentation} {brand}",
                 "CATEGORY": category,
                 "BRAND": brand,
                 "COST_MXN": cost,
@@ -223,7 +223,7 @@ def generate_sales(
                         "FACT_ID": factura_id,
                         "SALE_DATE": sale_date,
                         "PRODUCT_ID": product["PRODUCT_ID"],
-                        "PROD_NAME": product["PROD_NAME"],
+                        "PRODUCT_NAME": product["PRODUCT_NAME"],
                         "BRAND": product["BRAND"],
                         "CATEGORY": product["CATEGORY"],
                         "CLIENT_ID": client["CLIENT_ID"],
@@ -299,7 +299,7 @@ def generate_pedidos(
                     "SELLER_ID": vendor["SELLER_ID"],
                     "SELLER_NM": vendor["SELLER_NM"],
                     "PRODUCT_ID": product["PRODUCT_ID"],
-                    "PROD_NAME": product["PROD_NAME"],
+                    "PRODUCT_NAME": product["PRODUCT_NAME"],
                     "QTY_ORDER": qty_order,
                     "QTY_PEND": qty_pending,
                     "STATUS": status,
@@ -402,7 +402,7 @@ def generate_dbf_dataset(output_dir: Path) -> dict[str, Path]:
 
     _write_dbf(
         output_dir / "productos.dbf",
-        "PRODUCT_ID N(6,0); SKU C(12); PROD_NAME C(70); CATEGORY C(20); BRAND C(20); "
+        "PRODUCT_ID N(6,0); SKU C(12); PRODUCT_NAME C(70); CATEGORY C(20); BRAND C(20); "
         "COST_MXN N(10,2); PRICE_MXN N(10,2); STOCK_QTY N(8,0); MIN_STK N(6,0); MAX_STK N(6,0)",
         products,
     )
@@ -420,7 +420,7 @@ def generate_dbf_dataset(output_dir: Path) -> dict[str, Path]:
     _write_dbf(
         output_dir / "ventas.dbf",
         "SALE_ID N(10,0); FACT_ID N(10,0); SALE_DATE D; PRODUCT_ID N(6,0); "
-        "PROD_NAME C(70); BRAND C(20); CATEGORY C(20); CLIENT_ID N(6,0); "
+        "PRODUCT_NAME C(70); BRAND C(20); CATEGORY C(20); CLIENT_ID N(6,0); "
         "CLNT_NAME C(60); CLNT_ORIG C(25); SELLER_ID N(6,0); SELLER_NM C(40); "
         "ORIGEN_VT C(20); RECOM_SRC C(30); TIPO_FACT C(12); TIPO_ORDN C(12); "
         "STATUS C(12); QTY N(6,0); UNIT_MXN N(10,2); AMT_MXN N(12,2); "
@@ -449,7 +449,7 @@ def generate_dbf_dataset(output_dir: Path) -> dict[str, Path]:
     _write_dbf(
         output_dir / "pedidos.dbf",
         "ORDER_ID N(10,0); ORDER_DATE D; CLIENT_ID N(6,0); CLNT_NAME C(60); "
-        "SELLER_ID N(6,0); SELLER_NM C(40); PRODUCT_ID N(6,0); PROD_NAME C(70); "
+        "SELLER_ID N(6,0); SELLER_NM C(40); PRODUCT_ID N(6,0); PRODUCT_NAME C(70); "
         "QTY_ORDER N(6,0); QTY_PEND N(6,0); STATUS C(12); ORIGEN_VT C(20); TIPO_ORDN C(12)",
         pedidos,
     )

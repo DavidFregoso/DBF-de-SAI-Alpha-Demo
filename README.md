@@ -31,11 +31,12 @@ python verify_dbfs.py
 ```
 
 ## DBFs generados y schema breve
-Los archivos se generan en `data/dbf` (o `app/data/dbf` en staging):
+Los archivos se generan en `data/dbf` (o `app/data/dbf` en staging). Los nombres cortos en DBF
+se normalizan internamente (por ejemplo `PROD_NAME` → `PRODUCT_NAME`).
 
 - `ventas.dbf` (líneas de venta)
   - SALE_ID, FACTURA_ID, SALE_DATE
-  - PRODUCT_ID, PRODUCT_NAME, BRAND, CATEGORY
+  - PRODUCT_ID, PROD_NAME, BRAND, CATEGORY
   - CLIENT_ID, CLIENT_NAME, CLIENT_ORIGIN
   - SELLER_ID, SELLER_NAME
   - ORIGEN_VENTA, RECOMM_SOURCE
@@ -46,7 +47,7 @@ Los archivos se generan en `data/dbf` (o `app/data/dbf` en staging):
   - STATUS, TIPO_FACTURA, TIPO_ORDEN, ORIGEN_VENTA, RECOMM_SOURCE
   - SUBTOTAL_MXN, TOTAL_MXN, AMOUNT_USD, CURRENCY, USD_MXN_RATE
 - `productos.dbf`
-  - PRODUCT_ID, SKU, PRODUCT_NAME, BRAND, CATEGORY
+  - PRODUCT_ID, SKU, PROD_NAME, BRAND, CATEGORY
   - COST_MXN, PRICE_MXN, STOCK_QTY, MIN_STOCK, MAX_STOCK
 - `clientes.dbf`
   - CLIENT_ID, CLIENT_NAME, CLIENT_ORIGIN, RECOMM_SOURCE, REGION, CONTACT, STATUS, LAST_PURCHASE
@@ -57,7 +58,7 @@ Los archivos se generan en `data/dbf` (o `app/data/dbf` en staging):
 - `notas_credito.dbf`
   - NOTA_ID, FACTURA_ID, FECHA, CLIENT_ID, MONTO_MXN, MOTIVO
 - `pedidos.dbf`
-  - ORDER_ID, ORDER_DATE, CLIENT_ID/NAME, SELLER_ID/NAME, PRODUCT_ID/NAME
+  - ORDER_ID, ORDER_DATE, CLIENT_ID/NAME, SELLER_ID/NAME, PRODUCT_ID/PROD_NAME
   - QTY_ORDER, QTY_PENDING, STATUS, ORIGEN_VENTA, TIPO_ORDEN
 
 ## Moneda MXN/USD
@@ -71,6 +72,7 @@ La demo se puede construir como staging portable (incluye Python embeddable, dep
 ### Checklist rápido (rebuild)
 1. Ejecuta `.\scripts\build_staging.ps1`
 2. Ejecuta `.\build\staging\StartDemo.cmd`
+3. Verifica que los DBFs se generen y Streamlit abra sin errores.
 
 ### Paso 1: Construir staging
 Ejecuta desde PowerShell:

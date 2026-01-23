@@ -179,6 +179,36 @@ def render_page_nav(current_page: str) -> None:
         st.switch_page(PAGE_ROUTES[selection])
 
 
+def init_session_state() -> None:
+    from sai_alpha.state import init_state_once
+
+    init_state_once(load_sales())
+
+
+def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -> object:
+    from sai_alpha.filters import AdvancedFilterContext, build_advanced_filters, build_filter_state, build_global_filters
+
+    with st.sidebar.expander("Filtros globales", expanded=True):
+        global_filters = build_global_filters(ventas)
+
+    with st.sidebar.expander("Filtros avanzados", expanded=False) as expander:
+        advanced_context = AdvancedFilterContext(
+            brands=True,
+            categories=True,
+            vendors=True,
+            sale_origins=True,
+            client_origins=True,
+            recommendation_sources=True,
+            invoice_types=True,
+            order_types=True,
+            order_statuses=pedidos is not None and not pedidos.empty,
+        )
+        advanced_filters = build_advanced_filters(ventas, pedidos, advanced_context, expander)
+
+    bundle = load_bundle()
+    return build_filter_state(ventas, pedidos, bundle, global_filters, advanced_filters)
+
+
 def plotly_colors() -> list[str]:
     return st.session_state.get("plotly_colors", ["#198754", "#0f5132", "#2c3e50"])
 

@@ -24,10 +24,20 @@ class DataBundle:
 
 
 COMMON_ALIASES: dict[str, list[str]] = {
-    "PRODUCT_ID": ["PRODUCT_ID", "PROD_ID", "PRODUCTO_ID", "ID_PRODUCTO", "ID_PROD", "IDARTIC", "ID_ARTIC"],
+    "PRODUCT_ID": [
+        "PRODUCT_ID",
+        "PROD_ID",
+        "PRODID",
+        "PRODUCTO_ID",
+        "ID_PRODUCTO",
+        "ID_PROD",
+        "IDARTIC",
+        "ID_ARTIC",
+    ],
     "PRODUCT_NAME": [
         "PRODUCT_NAME",
         "PROD_NAME",
+        "PRD_NAME",
         "NOMBRE",
         "NOMPROD",
         "PRODUCTO",
@@ -51,7 +61,13 @@ COMMON_ALIASES: dict[str, list[str]] = {
         "CANTIDAD_EXIST",
         "QTY_ON_HAND",
     ],
-    "DAYS_INVENTORY": ["DAYS_INVENTORY", "DIAS_INVENTARIO", "DAYS_STOCK", "DAYS_ON_HAND", "DAYS_INV"],
+    "DAYS_INVENTORY": [
+        "DAYS_INVENTORY",
+        "DIAS_INVENTARIO",
+        "DAYS_STOCK",
+        "DAYS_ON_HAND",
+        "DAYS_INV",
+    ],
     "DATE": ["DATE", "FECHA", "FEC", "EMISION", "FACT_DATE"],
     "AMOUNT_MXN": ["AMOUNT_MXN", "REVENUE", "AMT_MXN", "TOTAL_MXN", "MONTO_MXN", "IMPORTE_MXN"],
     "AMOUNT_USD": ["AMOUNT_USD", "REV_USD", "REVENUE_USD", "AMT_USD", "TOTAL_USD", "MONTO_USD", "IMPORTE_USD"],
@@ -64,31 +80,49 @@ TABLE_ALIASES: dict[str, dict[str, list[str]]] = {
         "SALE_DATE": ["SALE_DATE", "DATE", "FECHA", "FEC", "EMISION", "FACT_DATE"],
         "CLIENT_ID": ["CLIENT_ID", "CLNT_ID", "ID_CLIENTE"],
         "CLIENT_NAME": ["CLIENT_NAME", "CLNT_NAME", "CLIENTE", "NOMBRE_CLI"],
-        "CLIENT_ORIGIN": ["CLIENT_ORIGIN", "ORIGEN_CLI", "CLNT_ORIG", "ORIGEN_CLIENTE"],
-        "ORIGEN_VENTA": ["ORIGEN_VENTA", "ORIGEN_VTA", "ORIGEN_VT"],
+        "CLIENT_ORIGIN": [
+            "CLIENT_ORIGIN",
+            "ORIGEN_CLI",
+            "CLNT_ORIG",
+            "ORIGEN_CLIENTE",
+            "CLIENT_SOURCE",
+            "INV_SOURCE",
+        ],
+        "ORIGEN_VENTA": ["ORIGEN_VENTA", "ORIGEN_VTA", "ORIGEN_VT", "SALE_ORIG"],
         "RECOMM_SOURCE": ["RECOMM_SOURCE", "ENCUESTA", "RECOMENDACION", "RECOM_SRC"],
-        "TIPO_FACTURA": ["TIPO_FACTURA", "TIPO_FACT"],
-        "TIPO_ORDEN": ["TIPO_ORDEN", "TIPO_ORDN"],
+        "TIPO_FACTURA": ["TIPO_FACTURA", "TIPO_FACT", "INV_TYPE", "INVOICE_TYPE"],
+        "TIPO_ORDEN": ["TIPO_ORDEN", "TIPO_ORDN", "ORD_TYPE", "ORDER_TYPE"],
         "STATUS": ["STATUS", "ESTATUS"],
         "QTY": ["QTY", "QUANTITY", "CANTIDAD", "CANT"],
         "UNIT_PRICE_MXN": ["UNIT_PRICE_MXN", "UNIT_PRICE", "UNIT_MXN", "PRECIO_UNIT", "PRECIO"],
         "CURRENCY": ["CURRENCY", "MONEDA"],
-        "USD_MXN_RATE": ["USD_MXN_RATE", "TC_MXN_USD", "USD_MXN", "TIPO_CAMBIO"],
+        "USD_MXN_RATE": [
+            "USD_MXN_RATE",
+            "TC_MXN_USD",
+            "USD_MXN",
+            "TIPO_CAMBIO",
+            "EXCH_RATE",
+            "EXCHANGE_RATE",
+        ],
         "FACTURA_ID": ["FACTURA_ID", "FACT_ID", "ID_FACTURA"],
         "SALE_ID": ["SALE_ID", "VENTA_ID", "ID_VENTA"],
+        "PRODUCT_NAME": ["PRODUCT_NAME", "PROD_NAME", "PRD_NAME"],
     },
     "productos": {
+        "PRODUCT_ID": ["PRODUCT_ID", "PROD_ID", "PRODID"],
+        "PRODUCT_NAME": ["PRODUCT_NAME", "PROD_NAME", "PRD_NAME"],
         "COST_MXN": ["COST_MXN", "BASE_COST", "COSTO", "COSTO_MXN"],
         "PRICE_MXN": ["PRICE_MXN", "BASE_PRICE", "PRECIO", "PRECIO_MXN"],
         "STOCK_QTY": ["STOCK_QTY", "EXISTENCIA", "STOCK", "INV", "INVENTARIO", "EXIST", "ON_HAND"],
         "MIN_STOCK": ["MIN_STOCK", "MIN_STK", "MINIMO", "MIN_INV"],
         "MAX_STOCK": ["MAX_STOCK", "MAX_STK", "MAXIMO", "MAX_INV"],
         "SKU": ["SKU", "CODIGO", "COD_PRODUCTO"],
+        "DAYS_INVENTORY": ["DAYS_INVENTORY", "DAYS_INV"],
     },
     "clientes": {
         "CLIENT_ID": ["CLIENT_ID", "CLNT_ID", "ID_CLIENTE"],
         "CLIENT_NAME": ["CLIENT_NAME", "CLNT_NAME", "CLIENTE", "NOMBRE_CLI"],
-        "CLIENT_ORIGIN": ["CLIENT_ORIGIN", "ORIGEN_CLI", "ORIGEN_CLIENTE"],
+        "CLIENT_ORIGIN": ["CLIENT_ORIGIN", "ORIGEN_CLI", "ORIGEN_CLIENTE", "CLIENT_SOURCE", "INV_SOURCE"],
         "RECOMM_SOURCE": ["RECOMM_SOURCE", "RECOM_SRC", "ENCUESTA", "RECOMENDACION"],
         "REGION": ["REGION", "ZONA"],
         "LAST_PURCHASE": ["LAST_PURCHASE", "LAST_PURCH", "LAST_PCH", "ULT_COMPRA"],
@@ -111,12 +145,19 @@ TABLE_ALIASES: dict[str, dict[str, list[str]]] = {
         "DATE": ["DATE", "FECHA", "FEC", "EMISION", "FACT_DATE"],
         "CLIENT_ID": ["CLIENT_ID", "CLNT_ID", "ID_CLIENTE"],
         "CLIENT_NAME": ["CLIENT_NAME", "CLNT_NAME", "CLIENTE", "NOMBRE_CLI"],
-        "TIPO_FACTURA": ["TIPO_FACTURA", "TIPO_FACT"],
-        "TIPO_ORDEN": ["TIPO_ORDEN", "TIPO_ORDN"],
-        "ORIGEN_VENTA": ["ORIGEN_VENTA", "ORIGEN_VTA", "ORIGEN_VT"],
+        "TIPO_FACTURA": ["TIPO_FACTURA", "TIPO_FACT", "INV_TYPE", "INVOICE_TYPE"],
+        "TIPO_ORDEN": ["TIPO_ORDEN", "TIPO_ORDN", "ORD_TYPE", "ORDER_TYPE"],
+        "ORIGEN_VENTA": ["ORIGEN_VENTA", "ORIGEN_VTA", "ORIGEN_VT", "SALE_ORIG"],
         "RECOMM_SOURCE": ["RECOMM_SOURCE", "RECOM_SRC", "ENCUESTA", "RECOMENDACION"],
         "CURRENCY": ["CURRENCY", "MONEDA"],
-        "USD_MXN_RATE": ["USD_MXN_RATE", "TC_MXN_USD", "USD_MXN", "TIPO_CAMBIO"],
+        "USD_MXN_RATE": [
+            "USD_MXN_RATE",
+            "TC_MXN_USD",
+            "USD_MXN",
+            "TIPO_CAMBIO",
+            "EXCH_RATE",
+            "EXCHANGE_RATE",
+        ],
         "SUBTOTAL_MXN": ["SUBTOTAL_MXN", "SUBT_MXN", "SUBTOTAL", "SUBTOTAL_MX"],
         "TOTAL_MXN": ["TOTAL_MXN", "REVENUE", "TOTAL", "TOTAL_MX", "MONTO_MXN"],
         "FACTURA_ID": ["FACTURA_ID", "FACT_ID", "ID_FACTURA"],
@@ -131,13 +172,14 @@ TABLE_ALIASES: dict[str, dict[str, list[str]]] = {
         "ORDER_DATE": ["ORDER_DATE", "DATE", "FECHA", "FEC", "EMISION", "FACT_DATE"],
         "CLIENT_ID": ["CLIENT_ID", "CLNT_ID", "ID_CLIENTE"],
         "CLIENT_NAME": ["CLIENT_NAME", "CLNT_NAME", "CLIENTE", "NOMBRE_CLI"],
-        "ORIGEN_VENTA": ["ORIGEN_VENTA", "ORIGEN_VTA", "ORIGEN_VT"],
-        "TIPO_ORDEN": ["TIPO_ORDEN", "TIPO_ORDN"],
+        "ORIGEN_VENTA": ["ORIGEN_VENTA", "ORIGEN_VTA", "ORIGEN_VT", "SALE_ORIG"],
+        "TIPO_ORDEN": ["TIPO_ORDEN", "TIPO_ORDN", "ORD_TYPE", "ORDER_TYPE"],
         "STATUS": ["STATUS", "ESTATUS"],
         "QTY_ORDER": ["QTY_ORDER", "QTY", "QUANTITY", "CANTIDAD", "CANT"],
         "QTY_PENDING": ["QTY_PENDING", "QTY_PEND", "PENDIENTE", "PEND"],
         "PRICE_MXN": ["PRICE_MXN", "PRECIO", "PRECIO_MXN", "UNIT_PRICE", "UNIT_PRICE_MXN"],
         "ORDER_ID": ["ORDER_ID", "PEDIDO_ID", "ID_PEDIDO"],
+        "PRODUCT_NAME": ["PRODUCT_NAME", "PROD_NAME", "PRD_NAME"],
     },
 }
 
@@ -175,6 +217,14 @@ def normalize_columns(df: pd.DataFrame, table_name: str, source_path: Path) -> p
     table_aliases = TABLE_ALIASES.get(table_name.lower(), {})
     normalized = _apply_aliases(normalized, table_aliases)
     normalized = _apply_aliases(normalized, COMMON_ALIASES)
+
+    if "PRODUCT_NAME_X" in normalized.columns or "PRODUCT_NAME_Y" in normalized.columns:
+        normalized = coalesce_columns(
+            normalized,
+            "PRODUCT_NAME",
+            ["PRODUCT_NAME", "PRODUCT_NAME_X", "PRODUCT_NAME_Y"],
+            drop_candidates=True,
+        )
 
     for col in DATE_COLUMNS:
         if col in normalized.columns:

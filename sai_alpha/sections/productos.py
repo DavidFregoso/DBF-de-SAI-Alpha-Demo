@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from sai_alpha.etl import normalize_columns, resolve_dbf_dir
 from sai_alpha.formatting import fmt_int, fmt_money, fmt_num, safe_metric
 from sai_alpha.filters import FilterState
 from sai_alpha.schema import resolve_column
@@ -18,7 +19,8 @@ def render(filters: FilterState, aggregates: dict) -> None:
         st.warning("No hay registros con los filtros actuales.")
         return
 
-    inventory = aggregates.get("inventory_summary", pd.DataFrame())
+    inventory_source = resolve_dbf_dir() / "productos.dbf"
+    inventory = normalize_columns(aggregates.get("inventory_summary", pd.DataFrame()), "productos", inventory_source)
     inventory_available = not inventory.empty
     if not inventory_available:
         missing = aggregates.get("inventory_missing", [])
@@ -98,6 +100,14 @@ def render(filters: FilterState, aggregates: dict) -> None:
     st.divider()
     st.markdown("### Productos por agotarse")
     if inventory_available:
+        if "PRODUCT_NAME" not in inventory.columns:
+            st.error(
+                "Falta la columna PRODUCT_NAME para mostrar productos por agotarse. "
+                "Regenera los DBFs si acabas de actualizar el demo."
+            )
+            st.write("Fuente DBF:", str(inventory_source))
+            st.write("Columnas disponibles:", list(inventory.columns))
+            return
         if "MIN_STOCK" not in inventory.columns:
             inventory["MIN_STOCK"] = inventory["STOCK_QTY"].fillna(0) * 0.2
         low_stock = inventory[inventory["STOCK_QTY"] <= inventory["MIN_STOCK"]].copy()

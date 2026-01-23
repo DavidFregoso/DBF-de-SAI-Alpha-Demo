@@ -1,37 +1,56 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
+import streamlit as st
 
 
-def fmt_num(value: object) -> str:
-    if value is None or pd.isna(value):
-        return ""
+DEFAULT_TEXT = "N/D"
+
+
+def _to_float(value: Any) -> float | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)) or pd.isna(value):
+        return None
     try:
-        return f"{float(value):,.2f}"
+        return float(value)
     except (TypeError, ValueError):
-        return ""
+        return None
 
 
-def fmt_currency(value: object, currency: str = "MXN") -> str:
-    formatted = fmt_num(value)
-    if not formatted:
-        return ""
+def fmt_num(value: Any, default: str = DEFAULT_TEXT) -> str:
+    number = _to_float(value)
+    if number is None:
+        return default
+    return f"{number:,.2f}"
+
+
+def fmt_money(value: Any, currency: str = "MXN", default: str = DEFAULT_TEXT) -> str:
+    formatted = fmt_num(value, default=default)
+    if formatted == default:
+        return default
     currency_label = (currency or "MXN").upper()
     prefix = "$" if currency_label == "MXN" else currency_label
     return f"{prefix} {formatted}"
 
 
-def fmt_int(value: object) -> str:
-    if value is None or pd.isna(value):
-        return ""
-    try:
-        return f"{int(round(float(value))):,}"
-    except (TypeError, ValueError):
-        return ""
+def fmt_int(value: Any, default: str = DEFAULT_TEXT) -> str:
+    number = _to_float(value)
+    if number is None:
+        return default
+    return f"{int(round(number)):,.0f}"
 
 
-def fmt_percent(value: object) -> str:
-    formatted = fmt_num(value)
-    if not formatted:
-        return ""
-    return f"{formatted}%"
+def safe_metric(label: str, value: Any, delta: Any | None = None, help: str | None = None) -> None:
+    if isinstance(value, str):
+        display_value = value
+    else:
+        display_value = fmt_num(value)
+    if delta is None:
+        st.metric(label, display_value, help=help)
+        return
+    if isinstance(delta, str):
+        display_delta = delta
+    else:
+        display_delta = fmt_num(delta)
+    st.metric(label, display_value, delta=display_delta, help=help)

@@ -112,14 +112,20 @@ def _init_multiselect_state(key: str, options: list[str]) -> None:
     st.session_state[key] = [value for value in current if value in options]
 
 
-def multiselect_with_actions(container, label: str, options: list[str], key: str) -> list[str]:
-    _init_multiselect_state(key, options)
-    col1, col2 = container.columns(2)
+def multiselect_with_actions(container, label: str, options: list[str] | None, key: str) -> list[str]:
+    # container puede ser None si no se creó el expander.
+    safe_container = container if container is not None else st.sidebar
+    safe_options = options or []
+    _init_multiselect_state(key, safe_options)
+    try:
+        col1, col2 = safe_container.columns(2)
+    except AttributeError:
+        col1, col2 = st.columns(2)
     if col1.button("Seleccionar todo", key=f"{key}_all"):
-        st.session_state[key] = options
+        st.session_state[key] = safe_options
     if col2.button("Limpiar", key=f"{key}_clear"):
         st.session_state[key] = []
-    return container.multiselect(label, options, key=key)
+    return safe_container.multiselect(label, safe_options, key=key)
 
 
 def _week_range_from_selection(year: int, week: int) -> tuple[date, date]:
@@ -251,87 +257,91 @@ def build_advanced_filters(
     df_sales: pd.DataFrame,
     df_orders: pd.DataFrame | None,
     context: AdvancedFilterContext,
+    container=None,
 ) -> dict[str, list[str] | None]:
-    def _default_options(frame: pd.DataFrame, column: str) -> list[str]:
-        if column not in frame.columns:
+    if df_sales is None:
+        st.sidebar.info("Ventas no cargadas; filtros avanzados deshabilitados")
+        return {}
+    if df_orders is None:
+        st.sidebar.info("Pedidos no cargados; filtros avanzados deshabilitados")
+        return {}
+
+    def _default_options(frame: pd.DataFrame | None, column: str) -> list[str]:
+        if frame is None or column not in frame.columns:
             return []
         return sorted(frame[column].dropna().unique().tolist())
 
-    with st.sidebar.expander("Filtros de esta sección", expanded=False) as expander:
-        filters: dict[str, list[str] | None] = {}
+    expander = container
+    filters: dict[str, list[str] | None] = {}
 
-        if context.brands:
-            options = _default_options(df_sales, "BRAND")
-            filters["brands"] = multiselect_with_actions(expander, "Marca", options, "filter_brands")
-        else:
-            filters["brands"] = _default_options(df_sales, "BRAND")
+    if context.brands:
+        options = _default_options(df_sales, "BRAND")
+        filters["brands"] = multiselect_with_actions(expander, "Marca", options, "filter_brands")
+    else:
+        filters["brands"] = _default_options(df_sales, "BRAND")
 
-        if context.categories:
-            options = _default_options(df_sales, "CATEGORY")
-            filters["categories"] = multiselect_with_actions(
-                expander, "Categoría", options, "filter_categories"
-            )
-        else:
-            filters["categories"] = _default_options(df_sales, "CATEGORY")
+    if context.categories:
+        options = _default_options(df_sales, "CATEGORY")
+        filters["categories"] = multiselect_with_actions(expander, "Categoría", options, "filter_categories")
+    else:
+        filters["categories"] = _default_options(df_sales, "CATEGORY")
 
-        if context.vendors:
-            options = _default_options(df_sales, "SELLER_NAME")
-            filters["vendors"] = multiselect_with_actions(
-                expander, "Vendedor", options, "filter_vendors"
-            )
-        else:
-            filters["vendors"] = _default_options(df_sales, "SELLER_NAME")
+    if context.vendors:
+        options = _default_options(df_sales, "SELLER_NAME")
+        filters["vendors"] = multiselect_with_actions(expander, "Vendedor", options, "filter_vendors")
+    else:
+        filters["vendors"] = _default_options(df_sales, "SELLER_NAME")
 
-        if context.sale_origins:
-            options = _default_options(df_sales, "ORIGEN_VENTA")
-            filters["sale_origins"] = multiselect_with_actions(
-                expander, "Origen de venta", options, "filter_sale_origins"
-            )
-        else:
-            filters["sale_origins"] = _default_options(df_sales, "ORIGEN_VENTA")
+    if context.sale_origins:
+        options = _default_options(df_sales, "ORIGEN_VENTA")
+        filters["sale_origins"] = multiselect_with_actions(
+            expander, "Origen de venta", options, "filter_sale_origins"
+        )
+    else:
+        filters["sale_origins"] = _default_options(df_sales, "ORIGEN_VENTA")
 
-        if context.client_origins:
-            options = _default_options(df_sales, "CLIENT_ORIGIN")
-            filters["client_origins"] = multiselect_with_actions(
-                expander, "Origen de cliente", options, "filter_client_origins"
-            )
-        else:
-            filters["client_origins"] = _default_options(df_sales, "CLIENT_ORIGIN")
+    if context.client_origins:
+        options = _default_options(df_sales, "CLIENT_ORIGIN")
+        filters["client_origins"] = multiselect_with_actions(
+            expander, "Origen de cliente", options, "filter_client_origins"
+        )
+    else:
+        filters["client_origins"] = _default_options(df_sales, "CLIENT_ORIGIN")
 
-        if context.recommendation_sources:
-            options = _default_options(df_sales, "RECOMM_SOURCE")
-            filters["recommendation_sources"] = multiselect_with_actions(
-                expander,
-                "Recomendación / encuesta",
-                options,
-                "filter_recommendations",
-            )
-        else:
-            filters["recommendation_sources"] = _default_options(df_sales, "RECOMM_SOURCE")
+    if context.recommendation_sources:
+        options = _default_options(df_sales, "RECOMM_SOURCE")
+        filters["recommendation_sources"] = multiselect_with_actions(
+            expander,
+            "Recomendación / encuesta",
+            options,
+            "filter_recommendations",
+        )
+    else:
+        filters["recommendation_sources"] = _default_options(df_sales, "RECOMM_SOURCE")
 
-        if context.invoice_types:
-            options = _default_options(df_sales, "TIPO_FACTURA")
-            filters["invoice_types"] = multiselect_with_actions(
-                expander, "Tipo de factura", options, "filter_invoice_types"
-            )
-        else:
-            filters["invoice_types"] = _default_options(df_sales, "TIPO_FACTURA")
+    if context.invoice_types:
+        options = _default_options(df_sales, "TIPO_FACTURA")
+        filters["invoice_types"] = multiselect_with_actions(
+            expander, "Tipo de factura", options, "filter_invoice_types"
+        )
+    else:
+        filters["invoice_types"] = _default_options(df_sales, "TIPO_FACTURA")
 
-        if context.order_types:
-            options = _default_options(df_sales, "TIPO_ORDEN")
-            filters["order_types"] = multiselect_with_actions(
-                expander, "Tipo de orden", options, "filter_order_types"
-            )
-        else:
-            filters["order_types"] = _default_options(df_sales, "TIPO_ORDEN")
+    if context.order_types:
+        options = _default_options(df_sales, "TIPO_ORDEN")
+        filters["order_types"] = multiselect_with_actions(
+            expander, "Tipo de orden", options, "filter_order_types"
+        )
+    else:
+        filters["order_types"] = _default_options(df_sales, "TIPO_ORDEN")
 
-        if context.order_statuses and df_orders is not None and not df_orders.empty:
-            options = _default_options(df_orders, "STATUS")
-            filters["order_statuses"] = multiselect_with_actions(
-                expander, "Estatus de pedido", options, "filter_order_statuses"
-            )
-        else:
-            filters["order_statuses"] = None
+    if context.order_statuses and df_orders is not None and not df_orders.empty:
+        options = _default_options(df_orders, "STATUS")
+        filters["order_statuses"] = multiselect_with_actions(
+            expander, "Estatus de pedido", options, "filter_order_statuses"
+        )
+    else:
+        filters["order_statuses"] = None
 
     return filters
 

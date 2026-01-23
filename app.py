@@ -14,7 +14,7 @@ from sai_alpha.aggregates import build_aggregates
 from sai_alpha.sections import clientes, configuracion, pedidos, productos, resumen, vendedores
 from sai_alpha.sections import ventas as ventas_section
 from sai_alpha.state import init_state_once
-from sai_alpha.ui import apply_theme, load_bundle, load_orders, load_sales, render_app_header
+from sai_alpha.ui import apply_theme, load_bundle, load_orders, load_sales, render_app_header, render_sidebar_header
 
 
 def build_sidebar(
@@ -22,6 +22,7 @@ def build_sidebar(
     pedidos_df,
     sections: list[str],
 ) -> tuple[str, FilterState]:
+    render_sidebar_header()
     st.session_state.setdefault("nav_section", sections[0])
     selected = st.sidebar.radio(
         "Navegación",
@@ -29,10 +30,6 @@ def build_sidebar(
         key="nav_section",
         label_visibility="visible",
     )
-
-    st.sidebar.markdown("<div class='sidebar-title'>Demo Surtidora de Abarrotes</div>", unsafe_allow_html=True)
-    st.sidebar.markdown("<div class='sidebar-subtitle'>Dashboard Ejecutivo</div>", unsafe_allow_html=True)
-    st.sidebar.divider()
 
     with st.sidebar.expander("Filtros globales", expanded=True):
         global_filters = build_global_filters(ventas)
@@ -98,9 +95,8 @@ def run_app() -> None:
     ]
     selected, filters = build_sidebar(ventas, pedidos_df, sections)
     last_update = st.session_state.get("data_max_date")
-    period_label = f"{filters.start_date.isoformat()} a {filters.end_date.isoformat()}"
     last_update_label = last_update.strftime("%d/%m/%Y") if last_update else None
-    render_app_header(period_label, filters.currency_label, last_update_label)
+    render_app_header(filters.period_label, filters.currency_label, last_update_label)
 
     aggregates = build_aggregates(
         ventas,

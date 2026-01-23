@@ -2,7 +2,7 @@ from app import run_app
 
 import streamlit as st
 
-from sai_alpha.ui import apply_theme, init_session_state, render_page_nav
+from sai_alpha.ui import apply_theme, init_session_state, render_page_nav, reset_theme_defaults
 
 
 st.set_page_config(page_title="Configuración", page_icon="⚙️", layout="wide")
@@ -21,6 +21,10 @@ with col1:
     st.color_picker("Color primario", key="theme_primary")
 with col2:
     st.color_picker("Color de acento", key="theme_accent")
+
+if st.button("Restaurar defaults", key="reset_theme_defaults_page"):
+    reset_theme_defaults()
+    st.success("Se restauraron los valores de apariencia por defecto.")
 
 st.selectbox(
     "Densidad de tablas",

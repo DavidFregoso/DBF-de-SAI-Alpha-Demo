@@ -6,31 +6,10 @@ import streamlit as st
 
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
-from sai_alpha.ui import build_time_series, export_buttons, plotly_colors, render_page_header, table_height
+from sai_alpha.ui import export_buttons, plotly_colors, render_page_header, table_height
 
 
-def _build_invoice_table(filtered: pd.DataFrame, currency_label: str, revenue_column: str) -> pd.DataFrame:
-    if "FACTURA_ID" in filtered.columns:
-        group_cols = ["FACTURA_ID", "SALE_DATE", "CLIENT_NAME", "SELLER_NAME", "CURRENCY", "STATUS"]
-        available = [col for col in group_cols if col in filtered.columns]
-        table = (
-            filtered.groupby(available)
-            .agg(revenue=(revenue_column, "sum"), units=("QTY", "sum"))
-            .reset_index()
-        )
-    else:
-        available = [col for col in ["SALE_ID", "SALE_DATE", "CLIENT_NAME", "SELLER_NAME", "CURRENCY", "STATUS"] if col in filtered.columns]
-        table = (
-            filtered.groupby(available)
-            .agg(revenue=(revenue_column, "sum"), units=("QTY", "sum"))
-            .reset_index()
-        )
-    table["revenue_fmt"] = table["revenue"].map(lambda value: fmt_money(value, currency_label))
-    table["units_fmt"] = table["units"].map(fmt_int)
-    return table.sort_values("revenue", ascending=False)
-
-
-def render(filters: FilterState) -> None:
+def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Ventas", subtitle="Evolución, canales y marcas con foco comercial")
 
     filtered = filters.sales
@@ -39,14 +18,11 @@ def render(filters: FilterState) -> None:
         return
 
     st.markdown("### KPIs clave")
-    revenue = filtered[filters.revenue_column].sum() if filters.revenue_column in filtered.columns else 0
-    orders = (
-        filtered["FACTURA_ID"].nunique()
-        if "FACTURA_ID" in filtered.columns
-        else filtered.get("SALE_ID", pd.Series(dtype=object)).nunique()
-    )
-    clients = filtered["CLIENT_ID"].nunique() if "CLIENT_ID" in filtered.columns else 0
-    ticket = revenue / orders if orders else 0
+    kpi_sales = aggregates.get("kpi_sales", {})
+    revenue = kpi_sales.get("revenue", 0)
+    orders = kpi_sales.get("orders", 0)
+    clients = kpi_sales.get("clients", 0)
+    ticket = kpi_sales.get("ticket", 0)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -63,18 +39,7 @@ def render(filters: FilterState) -> None:
 
     with tabs[0]:
         st.caption("Esto significa: cómo evoluciona la facturación en el periodo.")
-        granularity_options = ["Diario", "Semanal", "Mensual"]
-        granularity_index = (
-            granularity_options.index(filters.granularity)
-            if filters.granularity in granularity_options
-            else 0
-        )
-        granularity = st.selectbox(
-            "Granularidad de tendencia",
-            granularity_options,
-            index=granularity_index,
-        )
-        series = build_time_series(filtered, "SALE_DATE", filters.revenue_column, granularity)
+        series = aggregates.get("ventas_by_period", pd.DataFrame())
         fig = px.line(
             series,
             x="SALE_DATE",
@@ -84,13 +49,14 @@ def render(filters: FilterState) -> None:
             color_discrete_sequence=plotly_colors(),
         )
         fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Ventas: %{y:,.2f}<extra></extra>")
         st.plotly_chart(fig, use_container_width=True)
 
     with tabs[1]:
         st.caption("Esto significa: qué canales están generando más ventas.")
-        if "ORIGEN_VENTA" not in filtered.columns:
-            filtered = filtered.assign(ORIGEN_VENTA="No disponible")
-        channel = filtered.groupby("ORIGEN_VENTA")[filters.revenue_column].sum().reset_index()
+        channel = aggregates.get("ventas_by_channel", pd.DataFrame())
+        if channel.empty:
+            channel = pd.DataFrame({"ORIGEN_VENTA": ["No disponible"], filters.revenue_column: [0]})
         fig_channel = px.bar(
             channel.sort_values(filters.revenue_column, ascending=False),
             x="ORIGEN_VENTA",
@@ -98,6 +64,7 @@ def render(filters: FilterState) -> None:
             color_discrete_sequence=plotly_colors(),
         )
         fig_channel.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_channel.update_traces(hovertemplate="%{x}<br>Ventas: %{y:,.2f}<extra></extra>")
         st.plotly_chart(fig_channel, use_container_width=True)
 
     with tabs[2]:
@@ -105,7 +72,7 @@ def render(filters: FilterState) -> None:
         if "BRAND" not in filtered.columns:
             st.info("No hay información de marca disponible en este dataset.")
         else:
-            brand = filtered.groupby("BRAND")[filters.revenue_column].sum().reset_index()
+            brand = aggregates.get("ventas_by_brand", pd.DataFrame())
             fig_brand = px.bar(
                 brand.sort_values(filters.revenue_column, ascending=False).head(12),
                 x=filters.revenue_column,
@@ -114,11 +81,15 @@ def render(filters: FilterState) -> None:
                 color_discrete_sequence=plotly_colors(),
             )
             fig_brand.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            fig_brand.update_traces(hovertemplate="%{y}<br>Ventas: %{x:,.2f}<extra></extra>")
             st.plotly_chart(fig_brand, use_container_width=True)
 
     st.divider()
     st.markdown("### Facturas / pedidos")
-    table = _build_invoice_table(filtered, filters.currency_label, filters.revenue_column)
+    table = aggregates.get("invoice_table", pd.DataFrame())
+    if not table.empty:
+        table["revenue_fmt"] = table["revenue"].map(lambda value: fmt_money(value, filters.currency_label))
+        table["units_fmt"] = table["units"].map(fmt_int)
     display_cols = [
         col
         for col in [
@@ -134,22 +105,25 @@ def render(filters: FilterState) -> None:
         ]
         if col in table.columns
     ]
-    st.dataframe(
-        table[display_cols].head(25),
-        use_container_width=True,
-        height=table_height(min(25, len(table))),
-        column_config={
-            "FACTURA_ID": "Factura",
-            "SALE_ID": "Venta",
-            "SALE_DATE": st.column_config.DatetimeColumn("Fecha", format="DD/MM/YYYY"),
-            "CLIENT_NAME": "Cliente",
-            "SELLER_NAME": "Vendedor",
-            "CURRENCY": "Moneda",
-            "STATUS": "Estatus",
-            "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
-            "units_fmt": st.column_config.TextColumn("Unidades"),
-        },
-    )
+    if table.empty:
+        st.info("No hay facturas para mostrar con los filtros actuales.")
+    else:
+        st.dataframe(
+            table[display_cols].head(25),
+            use_container_width=True,
+            height=table_height(min(25, len(table))),
+            column_config={
+                "FACTURA_ID": "Factura",
+                "SALE_ID": "Venta",
+                "SALE_DATE": st.column_config.DatetimeColumn("Fecha", format="DD/MM/YYYY"),
+                "CLIENT_NAME": "Cliente",
+                "SELLER_NAME": "Vendedor",
+                "CURRENCY": "Moneda",
+                "STATUS": "Estatus",
+                "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
+                "units_fmt": st.column_config.TextColumn("Unidades"),
+            },
+        )
 
     st.divider()
     st.markdown("### Exportar")

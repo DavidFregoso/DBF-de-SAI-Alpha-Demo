@@ -47,6 +47,17 @@ def require_columns(df: pd.DataFrame, cols: Iterable[str]) -> tuple[bool, list[s
     return (len(missing) == 0, missing)
 
 
+def resolve_column(
+    df: pd.DataFrame,
+    candidates: Iterable[str],
+    required: bool = False,
+) -> str | None:
+    for candidate in candidates:
+        if candidate in df.columns:
+            return candidate
+    return None if required else None
+
+
 def coalesce_column(
     df: pd.DataFrame,
     target: str,

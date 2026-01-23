@@ -68,6 +68,10 @@ el FX promedio del periodo filtrado.
 ## Demo portable (sin Python instalado)
 La demo se puede construir como staging portable (incluye Python embeddable, dependencias y app).
 
+### Checklist rápido (rebuild)
+1. Ejecuta `.\scripts\build_staging.ps1`
+2. Ejecuta `.\build\staging\StartDemo.cmd`
+
 ### Paso 1: Construir staging
 Ejecuta desde PowerShell:
 ```powershell

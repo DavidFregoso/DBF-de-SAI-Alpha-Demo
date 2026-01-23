@@ -6,12 +6,11 @@ import streamlit as st
 
 from sai_alpha.formatting import fmt_int, fmt_money, fmt_num, safe_metric
 from sai_alpha.filters import FilterState
-from sai_alpha.schema import canonicalize_products, require_columns
-from sai_alpha.ui import build_time_series, plotly_colors, render_page_header, table_height
+from sai_alpha.schema import require_columns, resolve_column
+from sai_alpha.ui import plotly_colors, render_page_header, table_height
 
 
-def _inventory_block(filters: FilterState) -> None:
-    inventory = canonicalize_products(filters.products)
+def _inventory_block(inventory: pd.DataFrame, low_stock: pd.DataFrame, over_stock: pd.DataFrame) -> None:
     if inventory.empty:
         st.info("No hay inventario disponible para analizar.")
         return
@@ -19,33 +18,8 @@ def _inventory_block(filters: FilterState) -> None:
     required = {"PRODUCT_ID", "PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY"}
     ok, missing = require_columns(inventory, required)
     if not ok:
-        st.info("Inventario incompleto. Faltan columnas: " + ", ".join(missing))
+        st.info("Inventario incompleto en productos.dbf. Faltan columnas: " + ", ".join(missing))
         return
-
-    sales = filters.sales
-    period_days = max(1, (filters.end_date - filters.start_date).days + 1)
-    product_sales = (
-        sales.groupby(["PRODUCT_ID"])
-        .agg(units=("QTY", "sum"))
-        .reset_index()
-    )
-    product_sales["avg_daily_units"] = product_sales["units"] / period_days
-
-    inventory = inventory.merge(product_sales, on="PRODUCT_ID", how="left")
-    inventory["avg_daily_units"] = inventory["avg_daily_units"].fillna(0.0)
-
-    if "MIN_STOCK" not in inventory.columns:
-        inventory["MIN_STOCK"] = inventory["STOCK_QTY"].fillna(0) * 0.2
-    if "MAX_STOCK" not in inventory.columns:
-        inventory["MAX_STOCK"] = inventory["STOCK_QTY"].fillna(0) * 1.6
-
-    inventory["DAYS_INVENTORY"] = inventory.apply(
-        lambda row: row["STOCK_QTY"] / row["avg_daily_units"] if row["avg_daily_units"] > 0 else None,
-        axis=1,
-    )
-
-    low_stock = inventory[inventory["STOCK_QTY"] <= inventory["MIN_STOCK"]].copy()
-    over_stock = inventory[inventory["STOCK_QTY"] >= inventory["MAX_STOCK"]].copy()
 
     if low_stock.empty and over_stock.empty:
         st.info("No hay alertas de inventario con los datos actuales.")
@@ -100,7 +74,13 @@ def _inventory_block(filters: FilterState) -> None:
             )
 
 
-def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -> None:
+def render(
+    filters: FilterState,
+    bundle,
+    ventas: pd.DataFrame,
+    pedidos: pd.DataFrame | None,
+    aggregates: dict,
+) -> None:
     render_page_header("Resumen Ejecutivo")
 
     filtered = filters.sales
@@ -108,14 +88,11 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
         st.warning("No hay registros con los filtros actuales.")
         return
 
-    revenue = filtered[filters.revenue_column].sum() if filters.revenue_column in filtered.columns else 0
-    orders = (
-        filtered["FACTURA_ID"].nunique()
-        if "FACTURA_ID" in filtered.columns
-        else filtered.get("SALE_ID", pd.Series(dtype=object)).nunique()
-    )
-    clients = filtered["CLIENT_ID"].nunique() if "CLIENT_ID" in filtered.columns else 0
-    ticket = revenue / orders if orders else 0
+    kpi_sales = aggregates.get("kpi_sales", {})
+    revenue = kpi_sales.get("revenue", 0)
+    orders = kpi_sales.get("orders", 0)
+    clients = kpi_sales.get("clients", 0)
+    ticket = kpi_sales.get("ticket", 0)
 
     st.markdown("### KPIs clave")
     col1, col2, col3, col4 = st.columns(4)
@@ -130,7 +107,7 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
 
     st.divider()
     st.markdown("### Tendencia de facturación")
-    series = build_time_series(filtered, "SALE_DATE", filters.revenue_column, filters.granularity)
+    series = aggregates.get("ventas_by_period", pd.DataFrame())
     fig = px.line(
         series,
         x="SALE_DATE",
@@ -140,6 +117,7 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
         color_discrete_sequence=plotly_colors(),
     )
     fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+    fig.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Ventas: %{y:,.2f}<extra></extra>")
     st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
@@ -147,26 +125,21 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
     col_products, col_clients = st.columns(2)
 
     with col_products:
-        if "PRODUCT_NAME" not in filtered.columns:
-            st.info("No hay detalle de productos para mostrar.")
+        product_col = resolve_column(filtered, ["PRODUCT_NAME", "PRODUCT_NAME_X", "PRODUCT_NAME_Y"])
+        if not product_col:
+            st.info("No hay detalle de productos en ventas.dbf para mostrar.")
         else:
-            top_products = (
-                filtered.groupby("PRODUCT_NAME")
-                .agg(units=("QTY", "sum"), revenue=(filters.revenue_column, "sum"))
-                .reset_index()
-                .sort_values("revenue", ascending=False)
-                .head(10)
-            )
+            top_products = aggregates.get("top_products", pd.DataFrame())
             top_products["revenue_fmt"] = top_products["revenue"].map(
                 lambda value: fmt_money(value, filters.currency_label)
             )
             top_products["units_fmt"] = top_products["units"].map(fmt_int)
             st.dataframe(
-                top_products[["PRODUCT_NAME", "revenue_fmt", "units_fmt"]],
+                top_products[[product_col, "revenue_fmt", "units_fmt"]],
                 use_container_width=True,
                 height=table_height(len(top_products)),
                 column_config={
-                    "PRODUCT_NAME": "Producto",
+                    product_col: "Producto",
                     "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
                     "units_fmt": st.column_config.TextColumn("Unidades"),
                 },
@@ -174,15 +147,9 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
 
     with col_clients:
         if "CLIENT_NAME" not in filtered.columns:
-            st.info("No hay detalle de clientes para mostrar.")
+            st.info("No hay detalle de clientes en ventas.dbf para mostrar.")
         else:
-            top_clients = (
-                filtered.groupby("CLIENT_NAME")
-                .agg(revenue=(filters.revenue_column, "sum"))
-                .reset_index()
-                .sort_values("revenue", ascending=False)
-                .head(10)
-            )
+            top_clients = aggregates.get("top_clients", pd.DataFrame())
             top_clients["revenue_fmt"] = top_clients["revenue"].map(
                 lambda value: fmt_money(value, filters.currency_label)
             )
@@ -198,15 +165,19 @@ def render(filters: FilterState, bundle, ventas: pd.DataFrame, pedidos: pd.DataF
 
     st.divider()
     st.markdown("### Inventario crítico y sobre-stock")
-    _inventory_block(filters)
+    _inventory_block(
+        aggregates.get("inventory_summary", pd.DataFrame()),
+        aggregates.get("inventory_low", pd.DataFrame()),
+        aggregates.get("inventory_over", pd.DataFrame()),
+    )
 
     st.divider()
     st.markdown("### Pedidos por surtir")
-    if filters.pedidos is None or filters.pedidos.empty:
+    pending = aggregates.get("pedidos_pending", pd.DataFrame())
+    if pending.empty:
         st.info("No hay pedidos pendientes en este periodo.")
     else:
-        pending = filters.pedidos[filters.pedidos["STATUS"].isin(["Pendiente", "Parcial"])].copy()
-        pending_value = (pending["QTY_PENDING"].fillna(0) * pending["PRICE_MXN"].fillna(0)).sum()
+        pending_value = pending["PENDING_VALUE"].sum()
         col1, col2 = st.columns(2)
         col1.metric("Pedidos pendientes", fmt_int(pending["ORDER_ID"].nunique()))
         col2.metric("Valor pendiente", fmt_money(pending_value, "MXN"))

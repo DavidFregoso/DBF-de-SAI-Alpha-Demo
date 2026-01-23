@@ -12,10 +12,11 @@ from sai_alpha.filters import (
     build_filter_state,
     build_global_filters,
 )
+from sai_alpha.aggregates import build_aggregates
 from sai_alpha.sections import clientes, configuracion, pedidos, productos, resumen, vendedores
 from sai_alpha.sections import ventas as ventas_section
 from sai_alpha.state import init_state_once
-from sai_alpha.ui import apply_theme, load_bundle, load_orders, load_sales
+from sai_alpha.ui import apply_theme, load_bundle, load_orders, load_sales, render_app_header
 
 
 def build_sidebar(
@@ -23,15 +24,19 @@ def build_sidebar(
     pedidos_df,
     sections: list[str],
 ) -> tuple[str, FilterState]:
+    st.session_state.setdefault("nav_section", sections[0])
+    selected = st.sidebar.radio(
+        "Navegación",
+        sections,
+        key="nav_section",
+        label_visibility="visible",
+    )
+
     logo_path = Path("assets/logo.svg")
     if logo_path.exists():
-        st.sidebar.image(str(logo_path), width=180)
-    st.sidebar.markdown("**Demo Tienda – Dashboard Ejecutivo**")
+        st.sidebar.image(str(logo_path), width=160)
     st.sidebar.caption("Tablero comercial para dirección")
     st.sidebar.divider()
-
-    st.session_state.setdefault("nav_section", sections[0])
-    selected = st.sidebar.selectbox("Sección", sections, key="nav_section")
 
     with st.sidebar.expander("Filtros globales", expanded=True):
         global_filters = build_global_filters(ventas)
@@ -66,7 +71,12 @@ def build_sidebar(
 
 
 def run_app() -> None:
-    st.set_page_config(page_title="Demo Tienda – Dashboard Ejecutivo", page_icon="🛒", layout="wide")
+    st.set_page_config(
+        page_title="Demo Tienda – Dashboard Ejecutivo",
+        page_icon="🛒",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
     bundle = st.session_state.setdefault("data_bundle", load_bundle())
     ventas = st.session_state.setdefault("sales_data", load_sales())
@@ -91,25 +101,42 @@ def run_app() -> None:
         "Configuración",
     ]
     selected, filters = build_sidebar(ventas, pedidos_df, sections)
+    last_update = st.session_state.get("data_max_date")
+    period_label = f"{filters.start_date.isoformat()} a {filters.end_date.isoformat()}"
+    last_update_label = last_update.strftime("%d/%m/%Y") if last_update else None
+    render_app_header(period_label, filters.currency_label, last_update_label)
+
+    aggregates = build_aggregates(
+        ventas,
+        filters.sales,
+        filters.pedidos,
+        filters.products,
+        filters.start_date,
+        filters.end_date,
+        filters.revenue_column,
+        filters.currency_label,
+        filters.granularity,
+        filters.filter_key,
+    )
 
     if selected == "Resumen Ejecutivo":
-        resumen.render(filters, bundle, ventas, pedidos_df)
+        resumen.render(filters, bundle, ventas, pedidos_df, aggregates)
     elif selected == "Ventas":
-        ventas_section.render(filters)
+        ventas_section.render(filters, aggregates)
     elif selected == "Clientes":
-        clientes.render(filters, ventas)
+        clientes.render(filters, aggregates)
     elif selected == "Vendedores":
-        vendedores.render(filters)
+        vendedores.render(filters, aggregates)
     elif selected == "Productos":
         if bundle.productos is None or bundle.productos.empty:
             st.warning("Productos no cargados; esta sección se omitirá.")
             return
-        productos.render(filters, bundle, ventas)
+        productos.render(filters, aggregates)
     elif selected == "Pedidos por Surtir":
         if pedidos_df is None or pedidos_df.empty:
             st.warning("Pedidos no cargados; esta sección se omitirá.")
             return
-        pedidos.render(filters, bundle, ventas)
+        pedidos.render(filters, aggregates)
     elif selected == "Configuración":
         configuracion.render(bundle, ventas)
 

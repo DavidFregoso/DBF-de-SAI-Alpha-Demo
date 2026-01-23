@@ -23,6 +23,22 @@ class LatestPeriods:
 
 
 def compute_latest_periods(df_sales: pd.DataFrame) -> LatestPeriods:
+    if df_sales.empty or "SALE_DATE" not in df_sales.columns:
+        today = date.today()
+        iso = today.isocalendar()
+        return LatestPeriods(
+            min_date=today,
+            max_date=today,
+            latest_day=today,
+            latest_week_year=int(iso.year),
+            latest_week=int(iso.week),
+            latest_month_year=int(today.year),
+            latest_month=int(today.month),
+            latest_year=int(today.year),
+            years=[int(today.year)],
+            weeks_by_year={int(today.year): [int(iso.week)]},
+            months_by_year={int(today.year): [int(today.month)]},
+        )
     sales_dates = pd.to_datetime(df_sales["SALE_DATE"]).dropna()
     min_date = sales_dates.min().date()
     max_date = sales_dates.max().date()
@@ -70,9 +86,9 @@ def init_state_once(df_sales: pd.DataFrame) -> None:
         "theme_primary": "#0f5132",
         "theme_accent": "#198754",
         "table_density": "Confortable",
-        "period_mode": "Último periodo",
-        "granularity": "Semanal",
-        "granularity_prev": "Semanal",
+        "period_mode": "Último periodo disponible",
+        "range_mode": "Mes",
+        "granularity": "Auto",
         "currency_view": "MXN",
         "period_day": latest.latest_day,
         "period_week_year": latest.latest_week_year,
@@ -92,6 +108,7 @@ def init_state_once(df_sales: pd.DataFrame) -> None:
 def get_filters() -> dict[str, object]:
     return {
         "period_mode": st.session_state.get("period_mode"),
+        "range_mode": st.session_state.get("range_mode"),
         "granularity": st.session_state.get("granularity"),
         "currency_view": st.session_state.get("currency_view"),
         "period_day": st.session_state.get("period_day"),

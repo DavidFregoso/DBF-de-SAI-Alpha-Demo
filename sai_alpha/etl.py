@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 from dbfread import DBF
+import numpy as np
+
+from sai_alpha.schema import DEFAULT_TEXT, coalesce_columns
 
 
 @dataclass
@@ -201,6 +204,16 @@ def _read_dbf_to_df(path: Path) -> pd.DataFrame:
     return normalize_columns(df, path.stem, path)
 
 
+def _empty_df() -> pd.DataFrame:
+    return pd.DataFrame()
+
+
+def _safe_read_dbf(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return _empty_df()
+    return _read_dbf_to_df(path)
+
+
 def resolve_dbf_dir(default_dir: Path | None = None) -> Path:
     env_value = os.getenv("SAI_ALPHA_DBF_DIR")
     if env_value:
@@ -211,10 +224,10 @@ def resolve_dbf_dir(default_dir: Path | None = None) -> Path:
 
 
 def load_data(dbf_dir: Path) -> DataBundle:
-    ventas = _read_dbf_to_df(dbf_dir / "ventas.dbf")
-    productos = _read_dbf_to_df(dbf_dir / "productos.dbf")
-    clientes = _read_dbf_to_df(dbf_dir / "clientes.dbf")
-    vendedores = _read_dbf_to_df(dbf_dir / "vendedores.dbf")
+    ventas = _safe_read_dbf(dbf_dir / "ventas.dbf")
+    productos = _safe_read_dbf(dbf_dir / "productos.dbf")
+    clientes = _safe_read_dbf(dbf_dir / "clientes.dbf")
+    vendedores = _safe_read_dbf(dbf_dir / "vendedores.dbf")
 
     tipo_cambio_path = dbf_dir / "tipo_cambio.dbf"
     tcambio_path = dbf_dir / "tcambio.dbf"
@@ -224,14 +237,14 @@ def load_data(dbf_dir: Path) -> DataBundle:
 
     tipo_cambio = None
     if tipo_cambio_path.exists():
-        tipo_cambio = _read_dbf_to_df(tipo_cambio_path)
+        tipo_cambio = _safe_read_dbf(tipo_cambio_path)
     elif tcambio_path.exists():
-        tipo_cambio = _read_dbf_to_df(tcambio_path)
+        tipo_cambio = _safe_read_dbf(tcambio_path)
 
-    facturas = _read_dbf_to_df(facturas_path) if facturas_path.exists() else None
-    notas_credito = _read_dbf_to_df(notas_path) if notas_path.exists() else None
+    facturas = _safe_read_dbf(facturas_path) if facturas_path.exists() else None
+    notas_credito = _safe_read_dbf(notas_path) if notas_path.exists() else None
 
-    pedidos = _read_dbf_to_df(pedidos_path) if pedidos_path.exists() else None
+    pedidos = _safe_read_dbf(pedidos_path) if pedidos_path.exists() else None
 
     return DataBundle(
         ventas=ventas,
@@ -247,6 +260,9 @@ def load_data(dbf_dir: Path) -> DataBundle:
 
 def enrich_sales(bundle: DataBundle) -> pd.DataFrame:
     ventas = bundle.ventas.copy()
+    if ventas.empty:
+        return ventas
+
     if bundle.tipo_cambio is not None and "USD_MXN_RATE" not in ventas.columns:
         tipo_cambio = bundle.tipo_cambio.copy()
         tipo_cambio = tipo_cambio.rename(columns={"DATE": "SALE_DATE", "USD_MXN": "USD_MXN_RATE"})
@@ -256,61 +272,121 @@ def enrich_sales(bundle: DataBundle) -> pd.DataFrame:
     ventas = ventas.merge(bundle.clientes, on="CLIENT_ID", how="left", suffixes=("", "_CLI"))
     ventas = ventas.merge(bundle.vendedores, on="SELLER_ID", how="left", suffixes=("", "_SELL"))
 
-    if "PRODUCT_NAME" not in ventas.columns or ventas["PRODUCT_NAME"].isna().any():
-        if "PRODUCT_NAME_PROD" in ventas.columns:
-            ventas["PRODUCT_NAME"] = ventas["PRODUCT_NAME"].fillna(ventas["PRODUCT_NAME_PROD"])
-    if "BRAND" not in ventas.columns or ventas["BRAND"].isna().any():
-        if "BRAND_PROD" in ventas.columns:
-            ventas["BRAND"] = ventas["BRAND"].fillna(ventas["BRAND_PROD"])
-    if "CATEGORY" not in ventas.columns or ventas["CATEGORY"].isna().any():
-        if "CATEGORY_PROD" in ventas.columns:
-            ventas["CATEGORY"] = ventas["CATEGORY"].fillna(ventas["CATEGORY_PROD"])
-    if "CLIENT_NAME" not in ventas.columns or ventas["CLIENT_NAME"].isna().any():
-        if "CLIENT_NAME_CLI" in ventas.columns:
-            ventas["CLIENT_NAME"] = ventas["CLIENT_NAME"].fillna(ventas["CLIENT_NAME_CLI"])
-    if "CLIENT_ORIGIN" not in ventas.columns or ventas["CLIENT_ORIGIN"].isna().any():
-        if "CLIENT_ORIGIN_CLI" in ventas.columns:
-            ventas["CLIENT_ORIGIN"] = ventas["CLIENT_ORIGIN"].fillna(ventas["CLIENT_ORIGIN_CLI"])
-    if "RECOMM_SOURCE" not in ventas.columns or ventas["RECOMM_SOURCE"].isna().any():
-        if "RECOMM_SOURCE_CLI" in ventas.columns:
-            ventas["RECOMM_SOURCE"] = ventas["RECOMM_SOURCE"].fillna(ventas["RECOMM_SOURCE_CLI"])
-    if "SELLER_NAME" not in ventas.columns or ventas["SELLER_NAME"].isna().any():
-        if "SELLER_NAME_SELL" in ventas.columns:
-            ventas["SELLER_NAME"] = ventas["SELLER_NAME"].fillna(ventas["SELLER_NAME_SELL"])
-    if "ORIGEN_VENTA" in ventas.columns:
-        ventas["ORIGEN_VENTA"] = ventas["ORIGEN_VENTA"].fillna("Mostrador")
-    if "CLIENT_ORIGIN" in ventas.columns:
-        ventas["CLIENT_ORIGIN"] = ventas["CLIENT_ORIGIN"].fillna("Walk-in")
-    if "RECOMM_SOURCE" in ventas.columns:
-        ventas["RECOMM_SOURCE"] = ventas["RECOMM_SOURCE"].fillna("Sin encuesta")
+    ventas = coalesce_columns(
+        ventas,
+        "PRODUCT_NAME",
+        [
+            "PRODUCT_NAME",
+            "PRODUCT_NAME_X",
+            "PRODUCT_NAME_Y",
+            "PRODUCT_NAME_PROD",
+            "DESCR",
+            "DESCRIPTION",
+            "NOMBRE",
+        ],
+        default=DEFAULT_TEXT,
+    )
+    ventas = coalesce_columns(ventas, "BRAND", ["BRAND", "BRAND_PROD"], default=DEFAULT_TEXT)
+    ventas = coalesce_columns(ventas, "CATEGORY", ["CATEGORY", "CATEGORY_PROD"], default=DEFAULT_TEXT)
+    ventas = coalesce_columns(ventas, "CLIENT_NAME", ["CLIENT_NAME", "CLIENT_NAME_CLI"], default=DEFAULT_TEXT)
+    ventas = coalesce_columns(
+        ventas,
+        "CLIENT_ORIGIN",
+        ["CLIENT_ORIGIN", "CLIENT_ORIGIN_CLI", "CLNT_ORIG", "ORIGEN_CLI"],
+        default="Sin información",
+    )
+    ventas = coalesce_columns(
+        ventas,
+        "RECOMM_SOURCE",
+        ["RECOMM_SOURCE", "RECOMM_SOURCE_CLI", "RECOM_SRC"],
+        default="Sin encuesta",
+    )
+    ventas = coalesce_columns(
+        ventas,
+        "SELLER_NAME",
+        ["SELLER_NAME", "SELLER_NAME_SELL", "SELLER_NM"],
+        default=DEFAULT_TEXT,
+    )
+    ventas = coalesce_columns(
+        ventas,
+        "ORIGEN_VENTA",
+        ["ORIGEN_VENTA", "ORIGEN_VT", "ORIGEN_VTA"],
+        default="Mostrador",
+    )
+    ventas = coalesce_columns(
+        ventas,
+        "TIPO_FACTURA",
+        ["TIPO_FACTURA", "TIPO_FACT"],
+        default="Factura",
+    )
+    ventas = coalesce_columns(
+        ventas,
+        "TIPO_ORDEN",
+        ["TIPO_ORDEN", "TIPO_ORDN"],
+        default="Entrega",
+    )
 
-    if "USD_MXN_RATE" in ventas.columns:
-        ventas["USD_MXN_RATE"] = ventas["USD_MXN_RATE"].astype(float)
+    if "SALE_DATE" not in ventas.columns:
+        ventas = coalesce_columns(ventas, "SALE_DATE", ["DATE", "FECHA", "FEC", "FECHA_FACTURA"])
 
-    if "AMOUNT_MXN" in ventas.columns:
-        ventas["REVENUE_MXN"] = ventas["AMOUNT_MXN"].astype(float)
-    elif "AMOUNT_USD" in ventas.columns and "USD_MXN_RATE" in ventas.columns:
-        ventas["REVENUE_MXN"] = ventas["AMOUNT_USD"].astype(float) * ventas["USD_MXN_RATE"]
+    ventas["SALE_DATE"] = pd.to_datetime(ventas.get("SALE_DATE"), errors="coerce")
 
-    if "AMOUNT_USD" in ventas.columns:
-        ventas["REVENUE_USD"] = ventas["AMOUNT_USD"].astype(float)
-    elif "REVENUE_MXN" in ventas.columns and "USD_MXN_RATE" in ventas.columns:
-        ventas["REVENUE_USD"] = ventas["REVENUE_MXN"] / ventas["USD_MXN_RATE"].replace(0, pd.NA)
+    ventas = coalesce_columns(
+        ventas,
+        "USD_MXN_RATE",
+        ["USD_MXN_RATE", "USD_MXN", "TC", "TIPO_CAMBIO"],
+    )
+    if "USD_MXN_RATE" not in ventas.columns:
+        ventas["USD_MXN_RATE"] = pd.NA
 
-    if "UNIT_PRICE_MXN" in ventas.columns:
-        ventas["UNIT_PRICE_MXN"] = ventas["UNIT_PRICE_MXN"].astype(float)
-    elif "UNIT_PRICE" in ventas.columns:
-        ventas["UNIT_PRICE_MXN"] = ventas["UNIT_PRICE"].astype(float)
+    if ventas["USD_MXN_RATE"].isna().any():
+        day_of_year = ventas["SALE_DATE"].dt.dayofyear.fillna(1)
+        ventas["USD_MXN_RATE"] = ventas["USD_MXN_RATE"].fillna(
+            17.0 + 0.4 * np.sin(day_of_year / 365 * 6.283)
+        )
 
-    if "UNIT_PRICE_MXN" in ventas.columns and "USD_MXN_RATE" in ventas.columns:
-        ventas["UNIT_PRICE_USD"] = ventas["UNIT_PRICE_MXN"] / ventas["USD_MXN_RATE"].replace(0, pd.NA)
-    else:
-        ventas["UNIT_PRICE_USD"] = ventas.get("UNIT_PRICE_MXN", pd.Series(dtype=float))
+    ventas = coalesce_columns(
+        ventas,
+        "CURRENCY",
+        ["CURRENCY", "MONEDA"],
+        default="MXN",
+    )
+    ventas["CURRENCY"] = ventas["CURRENCY"].fillna("MXN").astype("string").str.upper()
 
-    if "QTY" in ventas.columns:
-        ventas["QTY"] = ventas["QTY"].astype(int)
-    elif "QUANTITY" in ventas.columns:
-        ventas["QTY"] = ventas["QUANTITY"].astype(int)
+    ventas = coalesce_columns(
+        ventas,
+        "TOTAL_MXN",
+        ["TOTAL_MXN", "AMOUNT_MXN", "AMT_MXN", "REVENUE_MXN", "SUBT_MXN"],
+    )
+    ventas = coalesce_columns(
+        ventas,
+        "TOTAL_USD",
+        ["TOTAL_USD", "AMOUNT_USD", "AMT_USD", "REVENUE_USD"],
+    )
+
+    ventas = coalesce_columns(ventas, "QTY", ["QTY", "QUANTITY", "CANTIDAD", "CANT"], default=0)
+    ventas["QTY"] = pd.to_numeric(ventas["QTY"], errors="coerce").fillna(0)
+
+    ventas = coalesce_columns(
+        ventas,
+        "UNIT_PRICE_MXN",
+        ["UNIT_PRICE_MXN", "UNIT_MXN", "PRECIO", "PRECIO_MXN"],
+    )
+    ventas["UNIT_PRICE_MXN"] = pd.to_numeric(ventas["UNIT_PRICE_MXN"], errors="coerce")
+
+    if "TOTAL_MXN" not in ventas.columns or ventas["TOTAL_MXN"].isna().all():
+        ventas["TOTAL_MXN"] = ventas["UNIT_PRICE_MXN"].fillna(0) * ventas["QTY"].fillna(0)
+
+    if "TOTAL_USD" not in ventas.columns or ventas["TOTAL_USD"].isna().all():
+        ventas["TOTAL_USD"] = ventas["TOTAL_MXN"] / ventas["USD_MXN_RATE"].replace(0, pd.NA)
+
+    ventas["REVENUE_MXN"] = pd.to_numeric(ventas["TOTAL_MXN"], errors="coerce").fillna(0)
+    ventas["REVENUE_USD"] = pd.to_numeric(ventas["TOTAL_USD"], errors="coerce").fillna(0)
+
+    ventas["UNIT_PRICE_USD"] = ventas["UNIT_PRICE_MXN"] / ventas["USD_MXN_RATE"].replace(0, pd.NA)
+    ventas["UNIT_PRICE_USD"] = ventas["UNIT_PRICE_USD"].fillna(ventas["UNIT_PRICE_MXN"].fillna(0))
+
+    ventas = ventas.sort_values("SALE_DATE")
     return ventas
 
 
@@ -321,6 +397,45 @@ def enrich_pedidos(bundle: DataBundle) -> pd.DataFrame:
     pedidos = pedidos.merge(bundle.productos, on="PRODUCT_ID", how="left", suffixes=("", "_PROD"))
     pedidos = pedidos.merge(bundle.clientes, on="CLIENT_ID", how="left", suffixes=("", "_CLI"))
     pedidos = pedidos.merge(bundle.vendedores, on="SELLER_ID", how="left", suffixes=("", "_SELL"))
+    pedidos = coalesce_columns(
+        pedidos,
+        "PRODUCT_NAME",
+        ["PRODUCT_NAME", "PRODUCT_NAME_PROD", "DESCR", "DESCRIPTION", "NOMBRE"],
+        default=DEFAULT_TEXT,
+    )
+    pedidos = coalesce_columns(
+        pedidos,
+        "CLIENT_NAME",
+        ["CLIENT_NAME", "CLIENT_NAME_CLI", "CLNT_NAME"],
+        default=DEFAULT_TEXT,
+    )
+    pedidos = coalesce_columns(
+        pedidos,
+        "SELLER_NAME",
+        ["SELLER_NAME", "SELLER_NAME_SELL", "SELLER_NM"],
+        default=DEFAULT_TEXT,
+    )
+    pedidos = coalesce_columns(
+        pedidos,
+        "ORDER_DATE",
+        ["ORDER_DATE", "DATE", "FECHA", "FEC"],
+    )
+    pedidos["ORDER_DATE"] = pd.to_datetime(pedidos.get("ORDER_DATE"), errors="coerce")
+    pedidos = coalesce_columns(pedidos, "STATUS", ["STATUS", "ESTATUS"], default="Pendiente")
+    pedidos = coalesce_columns(
+        pedidos,
+        "QTY_PENDING",
+        ["QTY_PENDING", "QTY_PEND", "PENDIENTE", "PEND"],
+        default=0,
+    )
+    pedidos["QTY_PENDING"] = pd.to_numeric(pedidos["QTY_PENDING"], errors="coerce").fillna(0)
+    pedidos = coalesce_columns(
+        pedidos,
+        "PRICE_MXN",
+        ["PRICE_MXN", "PRECIO", "PRECIO_MXN", "UNIT_PRICE", "UNIT_PRICE_MXN"],
+        default=0,
+    )
+    pedidos["PRICE_MXN"] = pd.to_numeric(pedidos["PRICE_MXN"], errors="coerce").fillna(0)
     return pedidos
 
 

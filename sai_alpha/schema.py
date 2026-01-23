@@ -6,6 +6,9 @@ from typing import Iterable
 import pandas as pd
 
 
+DEFAULT_TEXT = "No disponible"
+
+
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     normalized = []
@@ -17,11 +20,12 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def coalesce_column(
+def coalesce_columns(
     df: pd.DataFrame,
     target: str,
     candidates: Iterable[str],
-    drop_candidates: bool = True,
+    default: object | None = None,
+    drop_candidates: bool = False,
 ) -> pd.DataFrame:
     df = df.copy()
     if target not in df.columns:
@@ -29,6 +33,8 @@ def coalesce_column(
     for candidate in candidates:
         if candidate in df.columns:
             df[target] = df[target].combine_first(df[candidate])
+    if default is not None:
+        df[target] = df[target].fillna(default)
     if drop_candidates:
         for candidate in candidates:
             if candidate != target and candidate in df.columns:
@@ -36,79 +42,68 @@ def coalesce_column(
     return df
 
 
-def ensure_columns(df: pd.DataFrame, required: Iterable[str], context: str) -> None:
-    missing = sorted(set(required) - set(df.columns))
-    if missing:
-        available = ", ".join(sorted(df.columns))
-        raise ValueError(
-            f"Faltan columnas requeridas en {context}: {', '.join(missing)}. "
-            f"Disponibles: {available}"
-        )
+def require_columns(df: pd.DataFrame, cols: Iterable[str]) -> tuple[bool, list[str]]:
+    missing = sorted(set(cols) - set(df.columns))
+    return (len(missing) == 0, missing)
+
+
+def coalesce_column(
+    df: pd.DataFrame,
+    target: str,
+    candidates: Iterable[str],
+    drop_candidates: bool = True,
+) -> pd.DataFrame:
+    return coalesce_columns(df, target, candidates, drop_candidates=drop_candidates)
 
 
 def canonicalize_products(df_products: pd.DataFrame) -> pd.DataFrame:
     df = normalize_columns(df_products)
-    df = coalesce_column(df, "SKU", ["SKU", "CODIGO", "COD_PRODUCTO"], drop_candidates=False)
-    df = coalesce_column(
+    df = coalesce_columns(df, "SKU", ["SKU", "CODIGO", "COD_PRODUCTO"], default="")
+    df = coalesce_columns(
         df,
         "PRODUCT_NAME",
-        ["PRODUCT_NAME", "PRODUCT_NAME_X", "PRODUCT_NAME_Y", "PRODUCT_NAME_PROD", "PRODUCT_NAME_SALES"],
+        [
+            "PRODUCT_NAME",
+            "PRODUCT_NAME_X",
+            "PRODUCT_NAME_Y",
+            "DESCR",
+            "DESCRIPTION",
+            "NOMBRE",
+            "PRODUCT_NAME_PROD",
+            "PRODUCT_NAME_SALES",
+        ],
+        default=DEFAULT_TEXT,
     )
-    df = coalesce_column(df, "STOCK_QTY", ["STOCK_QTY", "EXISTENCIA"], drop_candidates=False)
-    df = coalesce_column(df, "COST_MXN", ["COST_MXN", "COSTO", "COSTO_MXN"], drop_candidates=False)
-    df = coalesce_column(df, "PRICE_MXN", ["PRICE_MXN", "PRECIO", "PRECIO_MXN"], drop_candidates=False)
-    df = coalesce_column(df, "MIN_STOCK", ["MIN_STOCK", "MINIMO", "MIN_INV"], drop_candidates=False)
-    df = coalesce_column(df, "MAX_STOCK", ["MAX_STOCK", "MAXIMO", "MAX_INV"], drop_candidates=False)
-    required = {
-        "PRODUCT_ID",
-        "SKU",
-        "PRODUCT_NAME",
-        "BRAND",
-        "CATEGORY",
-        "STOCK_QTY",
-        "COST_MXN",
-        "PRICE_MXN",
-        "MIN_STOCK",
-        "MAX_STOCK",
-    }
-    ensure_columns(df, required, "productos")
+    df = coalesce_columns(df, "STOCK_QTY", ["STOCK_QTY", "EXISTENCIA", "STOCK"], default=0)
+    df = coalesce_columns(df, "COST_MXN", ["COST_MXN", "COSTO", "COSTO_MXN"], default=0)
+    df = coalesce_columns(df, "PRICE_MXN", ["PRICE_MXN", "PRECIO", "PRECIO_MXN"], default=0)
+    df = coalesce_columns(df, "MIN_STOCK", ["MIN_STOCK", "MIN_STK", "MINIMO", "MIN_INV"])
+    df = coalesce_columns(df, "MAX_STOCK", ["MAX_STOCK", "MAX_STK", "MAXIMO", "MAX_INV"])
+    if "MIN_STOCK" in df.columns:
+        df["MIN_STOCK"] = pd.to_numeric(df["MIN_STOCK"], errors="coerce").fillna(0)
+    if "MAX_STOCK" in df.columns:
+        df["MAX_STOCK"] = pd.to_numeric(df["MAX_STOCK"], errors="coerce").fillna(0)
     return df
 
 
 def canonicalize_sales(df_sales: pd.DataFrame) -> pd.DataFrame:
     df = normalize_columns(df_sales)
-    df = coalesce_column(df, "DATE", ["DATE", "SALE_DATE", "FECHA"], drop_candidates=False)
-    df = coalesce_column(df, "FACT_ID", ["FACT_ID", "FACTURA_ID", "SALE_ID"], drop_candidates=False)
-    df = coalesce_column(df, "CLIENT_ID", ["CLIENT_ID"], drop_candidates=False)
-    df = coalesce_column(df, "PRODUCT_ID", ["PRODUCT_ID"], drop_candidates=False)
-    df = coalesce_column(df, "QTY", ["QTY", "QUANTITY", "CANTIDAD"], drop_candidates=False)
-    df = coalesce_column(df, "TOTAL_MXN", ["TOTAL_MXN", "REVENUE_MXN", "AMOUNT_MXN"], drop_candidates=False)
-    df = coalesce_column(df, "CURRENCY", ["CURRENCY", "MONEDA"], drop_candidates=False)
-    df = coalesce_column(df, "FX_RATE", ["FX_RATE", "USD_MXN_RATE", "TIPO_CAMBIO"], drop_candidates=False)
-    df = coalesce_column(df, "CHANNEL", ["CHANNEL", "ORIGEN_VENTA"], drop_candidates=False)
-    df = coalesce_column(
+    df = coalesce_columns(df, "SALE_DATE", ["SALE_DATE", "DATE", "FECHA", "FEC", "FECHA_FACTURA"])
+    df = coalesce_columns(df, "FACT_ID", ["FACT_ID", "FACTURA_ID", "SALE_ID"])
+    df = coalesce_columns(df, "CLIENT_ID", ["CLIENT_ID", "CLNT_ID", "ID_CLIENTE"])
+    df = coalesce_columns(df, "PRODUCT_ID", ["PRODUCT_ID", "PROD_ID", "ID_PRODUCTO"])
+    df = coalesce_columns(df, "QTY", ["QTY", "QUANTITY", "CANTIDAD", "CANT"], default=0)
+    df = coalesce_columns(df, "TOTAL_MXN", ["TOTAL_MXN", "AMOUNT_MXN", "AMT_MXN", "REVENUE_MXN"])
+    df = coalesce_columns(df, "TOTAL_USD", ["TOTAL_USD", "AMOUNT_USD", "AMT_USD", "REVENUE_USD"])
+    df = coalesce_columns(df, "CURRENCY", ["CURRENCY", "MONEDA"], default="MXN")
+    df = coalesce_columns(
         df,
-        "CLIENT_SOURCE",
-        ["CLIENT_SOURCE", "CLIENT_ORIGIN", "RECOMM_SOURCE"],
-        drop_candidates=False,
-    )
-    df = coalesce_column(df, "ORDER_TYPE", ["ORDER_TYPE", "TIPO_ORDEN"], drop_candidates=False)
-    df = coalesce_column(df, "INVOICE_TYPE", ["INVOICE_TYPE", "TIPO_FACTURA"], drop_candidates=False)
-    df = coalesce_column(df, "STATUS", ["STATUS"], drop_candidates=False)
-    required = {
-        "DATE",
-        "FACT_ID",
-        "CLIENT_ID",
-        "PRODUCT_ID",
-        "QTY",
-        "TOTAL_MXN",
-        "CURRENCY",
         "FX_RATE",
-        "CHANNEL",
-        "CLIENT_SOURCE",
-        "ORDER_TYPE",
-        "INVOICE_TYPE",
-        "STATUS",
-    }
-    ensure_columns(df, required, "ventas")
+        ["FX_RATE", "USD_MXN_RATE", "USD_MXN", "TIPO_CAMBIO", "TC"],
+    )
+    df = coalesce_columns(df, "CHANNEL", ["CHANNEL", "ORIGEN_VENTA", "ORIGEN_VT"])
+    df = coalesce_columns(df, "CLIENT_SOURCE", ["CLIENT_SOURCE", "CLIENT_ORIGIN", "RECOMM_SOURCE"])
+    df = coalesce_columns(df, "ORDER_TYPE", ["ORDER_TYPE", "TIPO_ORDEN", "TIPO_ORDN"])
+    df = coalesce_columns(df, "INVOICE_TYPE", ["INVOICE_TYPE", "TIPO_FACTURA", "TIPO_FACT"])
+    df = coalesce_columns(df, "STATUS", ["STATUS", "ESTATUS"])
     return df

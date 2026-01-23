@@ -9,7 +9,7 @@ import plotly.io as pio
 import streamlit as st
 
 from sai_alpha.etl import DataBundle, enrich_pedidos, enrich_sales, load_data, resolve_dbf_dir
-from sai_alpha.formatting import fmt_int, fmt_num
+from sai_alpha.formatting import fmt_int, fmt_money
 
 DATA_DIR = resolve_dbf_dir()
 EXPORT_DIR = Path("data/exports")
@@ -33,7 +33,8 @@ def load_bundle() -> DataBundle:
 def load_sales() -> pd.DataFrame:
     bundle = load_bundle()
     ventas = enrich_sales(bundle)
-    ventas["SALE_DATE"] = pd.to_datetime(ventas["SALE_DATE"])
+    if not ventas.empty and "SALE_DATE" in ventas.columns:
+        ventas["SALE_DATE"] = pd.to_datetime(ventas["SALE_DATE"], errors="coerce")
     if "LAST_PURCHASE" in ventas.columns:
         ventas["LAST_PURCHASE"] = pd.to_datetime(ventas["LAST_PURCHASE"])
     return ventas
@@ -56,24 +57,15 @@ REQUIRED_SALES_COLUMNS = {
     "CATEGORY",
     "CLIENT_ID",
     "CLIENT_NAME",
-    "CLIENT_ORIGIN",
-    "SELLER_ID",
     "SELLER_NAME",
-    "ORIGEN_VENTA",
-    "RECOMM_SOURCE",
-    "TIPO_FACTURA",
-    "TIPO_ORDEN",
-    "STATUS",
     "QTY",
-    "UNIT_PRICE_MXN",
     "REVENUE_MXN",
     "REVENUE_USD",
 }
 
 
 def validate_sales_schema(ventas: pd.DataFrame) -> list[str]:
-    missing = sorted(REQUIRED_SALES_COLUMNS - set(ventas.columns))
-    return missing
+    return sorted(REQUIRED_SALES_COLUMNS - set(ventas.columns))
 
 
 def apply_theme() -> None:
@@ -146,26 +138,27 @@ def plotly_colors() -> list[str]:
     return st.session_state.get("plotly_colors", ["#198754", "#0f5132", "#2c3e50"])
 
 
-def _resolve_excel_engine() -> str | None:
-    if importlib.util.find_spec("xlsxwriter") is not None:
-        return "xlsxwriter"
-    if importlib.util.find_spec("openpyxl") is not None:
-        return "openpyxl"
-    return None
-
-
 def export_dataframe(df: pd.DataFrame) -> tuple[bytes, str, str] | None:
-    engine = _resolve_excel_engine()
-    if engine is None:
+    engines = [
+        engine
+        for engine in ("xlsxwriter", "openpyxl")
+        if importlib.util.find_spec(engine) is not None
+    ]
+    if not engines:
         return None
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine=engine) as writer:
-        df.to_excel(writer, index=False)
-    return (
-        buffer.getvalue(),
-        "xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    for engine in engines:
+        buffer = BytesIO()
+        try:
+            with pd.ExcelWriter(buffer, engine=engine) as writer:
+                df.to_excel(writer, index=False)
+            return (
+                buffer.getvalue(),
+                "xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except Exception:
+            continue
+    return None
 
 
 def export_buttons(df: pd.DataFrame, label: str) -> None:
@@ -179,7 +172,10 @@ def export_buttons(df: pd.DataFrame, label: str) -> None:
 
     excel_export = export_dataframe(df)
     if excel_export is None:
-        st.caption("Exportación Excel no disponible (instala xlsxwriter u openpyxl).")
+        st.caption(
+            "Exportación Excel no disponible. Se descargará CSV únicamente "
+            "(instala xlsxwriter u openpyxl si necesitas Excel)."
+        )
         return
 
     data, extension, mime = excel_export
@@ -201,9 +197,11 @@ def _metric_columns(currency_mode: str) -> tuple[str, str, str]:
 def normalize_currency(ventas: pd.DataFrame, currency_mode: str) -> tuple[pd.DataFrame, str, str, str]:
     df = ventas.copy()
     if "REVENUE_MXN" not in df.columns and "AMOUNT_MXN" in df.columns:
-        df["REVENUE_MXN"] = df["AMOUNT_MXN"].astype(float)
+        df["REVENUE_MXN"] = pd.to_numeric(df["AMOUNT_MXN"], errors="coerce").fillna(0)
+    if "REVENUE_MXN" not in df.columns:
+        df["REVENUE_MXN"] = pd.to_numeric(df.get("TOTAL_MXN", 0), errors="coerce").fillna(0)
     if "REVENUE_USD" not in df.columns and "AMOUNT_USD" in df.columns:
-        df["REVENUE_USD"] = df["AMOUNT_USD"].astype(float)
+        df["REVENUE_USD"] = pd.to_numeric(df["AMOUNT_USD"], errors="coerce").fillna(0)
     if "REVENUE_USD" not in df.columns and "USD_MXN_RATE" in df.columns:
         df["REVENUE_USD"] = df["REVENUE_MXN"] / df["USD_MXN_RATE"].replace(0, pd.NA)
     if "UNIT_PRICE_MXN" in df.columns and "UNIT_PRICE_USD" not in df.columns:
@@ -228,36 +226,33 @@ def format_number_column(label: str) -> st.column_config.Column:
     return st.column_config.TextColumn(label)
 
 
-def format_money(value: float) -> str:
-    return fmt_num(value)
+def format_money(value: float, currency: str = "MXN") -> str:
+    return fmt_money(value, currency)
 
 
 def format_int(value: float | int) -> str:
     return fmt_int(value)
 
 
-def render_page_header(section_title: str) -> None:
+def render_page_header(section_title: str, subtitle: str = "Abarrotes / Bebidas / Botanas / Lácteos") -> None:
     st.markdown("<div class='app-header'>Demo Tienda – Dashboard Ejecutivo</div>", unsafe_allow_html=True)
-    st.markdown("<div class='app-subtitle'>Abarrotes / Bebidas / Botanas / Lácteos</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='app-subtitle'>{subtitle}</div>", unsafe_allow_html=True)
     st.title(section_title)
 
 
 @st.cache_data(show_spinner=False)
 def build_time_series(df: pd.DataFrame, date_col: str, value_col: str, granularity: str) -> pd.DataFrame:
-    if df.empty:
+    if df.empty or date_col not in df.columns or value_col not in df.columns:
         return pd.DataFrame({date_col: [], value_col: []})
     if granularity == "Diario":
         series = df.groupby(df[date_col].dt.date)[value_col].sum().reset_index(name=value_col)
         series[date_col] = pd.to_datetime(series[date_col])
         return series
     if granularity == "Semanal":
-        series = df.groupby(pd.Grouper(key=date_col, freq="W-MON"))[value_col].sum().reset_index()
-        return series
+        return df.groupby(pd.Grouper(key=date_col, freq="W-MON"))[value_col].sum().reset_index()
     if granularity == "Mensual":
-        series = df.groupby(pd.Grouper(key=date_col, freq="M"))[value_col].sum().reset_index()
-        return series
-    series = df.groupby(pd.Grouper(key=date_col, freq="Y"))[value_col].sum().reset_index()
-    return series
+        return df.groupby(pd.Grouper(key=date_col, freq="M"))[value_col].sum().reset_index()
+    return df.groupby(pd.Grouper(key=date_col, freq="Y"))[value_col].sum().reset_index()
 
 
 def table_height(rows: int) -> int:

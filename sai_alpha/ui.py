@@ -78,15 +78,58 @@ def apply_theme() -> None:
     st.markdown(
         f"""
         <style>
+            #MainMenu {{ visibility: hidden; }}
+            header {{ visibility: hidden; }}
+            footer {{ visibility: hidden; }}
+            [data-testid="stToolbar"] {{ visibility: hidden; height: 0; }}
+            [data-testid="stStatusWidget"] {{ visibility: hidden; }}
+            [data-testid="stDecoration"] {{ visibility: hidden; }}
+            [data-testid="stDeployButton"] {{ display: none; }}
             .app-header {{
                 font-weight: 700;
-                font-size: 1.6rem;
+                font-size: 1.4rem;
                 color: {primary};
                 margin-bottom: 0.25rem;
             }}
             .app-subtitle {{
                 color: #6c757d;
                 margin-top: 0;
+            }}
+            .top-header {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 1rem;
+                padding: 0.75rem 1rem;
+                border-radius: 12px;
+                background: #f8f9fa;
+                border: 1px solid #e9ecef;
+                margin-bottom: 1.5rem;
+            }}
+            .top-header-title {{
+                font-weight: 700;
+                font-size: 1.3rem;
+                color: {primary};
+            }}
+            .top-header-sub {{
+                color: #6c757d;
+                font-size: 0.9rem;
+                margin-top: 0.15rem;
+            }}
+            .status-pills {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                justify-content: flex-end;
+            }}
+            .status-pill {{
+                background: #ffffff;
+                border: 1px solid #dee2e6;
+                border-radius: 999px;
+                padding: 0.35rem 0.75rem;
+                font-size: 0.8rem;
+                color: #495057;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.04);
             }}
             [data-testid="stMetricValue"] {{
                 color: {primary};
@@ -97,6 +140,8 @@ def apply_theme() -> None:
             .section-title {{
                 border-left: 4px solid {accent};
                 padding-left: 0.6rem;
+                font-weight: 600;
+                font-size: 1.1rem;
             }}
             [data-testid="stSidebarNav"],
             [data-testid="stSidebarNavItems"],
@@ -235,9 +280,28 @@ def format_int(value: float | int) -> str:
 
 
 def render_page_header(section_title: str, subtitle: str = "Abarrotes / Bebidas / Botanas / Lácteos") -> None:
-    st.markdown("<div class='app-header'>Demo Tienda – Dashboard Ejecutivo</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-title'>{section_title}</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='app-subtitle'>{subtitle}</div>", unsafe_allow_html=True)
-    st.title(section_title)
+
+
+def render_app_header(period_label: str, currency_label: str, last_update: str | None) -> None:
+    last_update_display = last_update or "Sin datos"
+    st.markdown(
+        f"""
+        <div class="top-header">
+            <div>
+                <div class="top-header-title">Demo Tienda – Dashboard Ejecutivo</div>
+                <div class="top-header-sub">Panel ejecutivo de desempeño comercial</div>
+            </div>
+            <div class="status-pills">
+                <span class="status-pill">Periodo seleccionado: {period_label}</span>
+                <span class="status-pill">Moneda: {currency_label}</span>
+                <span class="status-pill">Última actualización: {last_update_display}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 @st.cache_data(show_spinner=False)

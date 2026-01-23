@@ -6,10 +6,10 @@ import streamlit as st
 
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
-from sai_alpha.ui import build_time_series, export_buttons, plotly_colors, render_page_header, table_height
+from sai_alpha.ui import export_buttons, plotly_colors, render_page_header, table_height
 
 
-def render(filters: FilterState) -> None:
+def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Vendedores", subtitle="Desempeño individual y comparativo")
 
     filtered = filters.sales
@@ -18,20 +18,13 @@ def render(filters: FilterState) -> None:
         return
 
     if "SELLER_NAME" not in filtered.columns:
-        st.info("No hay información de vendedores en este dataset.")
+        st.info("No hay información de vendedores en ventas.dbf.")
         return
 
-    order_column = "FACTURA_ID" if "FACTURA_ID" in filtered.columns else "SALE_ID"
-    seller_summary = (
-        filtered.groupby(["SELLER_NAME"])
-        .agg(
-            revenue=(filters.revenue_column, "sum"),
-            units=("QTY", "sum"),
-            orders=(order_column, "nunique"),
-        )
-        .reset_index()
-        .sort_values("revenue", ascending=False)
-    )
+    seller_summary = aggregates.get("seller_summary", pd.DataFrame())
+    if seller_summary.empty:
+        st.info("No hay suficientes ventas para mostrar el desempeño de vendedores.")
+        return
 
     revenue_total = seller_summary["revenue"].sum()
     orders_total = seller_summary["orders"].sum()
@@ -82,8 +75,11 @@ def render(filters: FilterState) -> None:
     st.divider()
     st.markdown("### Tendencia por vendedor")
     selected_vendor = st.selectbox("Vendedor", seller_summary["SELLER_NAME"].unique().tolist())
-    vendor_sales = filtered[filtered["SELLER_NAME"] == selected_vendor]
-    series = build_time_series(vendor_sales, "SALE_DATE", filters.revenue_column, filters.granularity)
+    seller_trend = aggregates.get("seller_trend", pd.DataFrame())
+    if seller_trend.empty:
+        st.info("No hay suficiente información para construir la tendencia.")
+        return
+    series = seller_trend[seller_trend["SELLER_NAME"] == selected_vendor]
     fig_trend = px.line(
         series,
         x="SALE_DATE",
@@ -92,6 +88,7 @@ def render(filters: FilterState) -> None:
         color_discrete_sequence=plotly_colors(),
     )
     fig_trend.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+    fig_trend.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Ventas: %{y:,.2f}<extra></extra>")
     st.plotly_chart(fig_trend, use_container_width=True)
 
     st.divider()

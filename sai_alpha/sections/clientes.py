@@ -9,7 +9,7 @@ from sai_alpha.filters import FilterState
 from sai_alpha.ui import export_buttons, plotly_colors, render_page_header, table_height
 
 
-def render(filters: FilterState, ventas: pd.DataFrame) -> None:
+def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Clientes", subtitle="Clientes activos, origen y recurrencia")
 
     filtered = filters.sales
@@ -17,19 +17,14 @@ def render(filters: FilterState, ventas: pd.DataFrame) -> None:
         st.warning("No hay registros con los filtros actuales.")
         return
 
-    revenue = filtered[filters.revenue_column].sum() if filters.revenue_column in filtered.columns else 0
-    clients = filtered["CLIENT_ID"].nunique() if "CLIENT_ID" in filtered.columns else 0
-    mxn_count = (filtered["CURRENCY"] == "MXN").sum() if "CURRENCY" in filtered.columns else 0
-    usd_count = (filtered["CURRENCY"] == "USD").sum() if "CURRENCY" in filtered.columns else 0
-
-    new_clients = 0
-    recurrent_clients = 0
-    if "CLIENT_ID" in ventas.columns and "SALE_DATE" in ventas.columns:
-        first_purchase = ventas.groupby("CLIENT_ID")["SALE_DATE"].min().reset_index(name="first_purchase")
-        active_clients = filtered[["CLIENT_ID"]].drop_duplicates()
-        active_clients = active_clients.merge(first_purchase, on="CLIENT_ID", how="left")
-        new_clients = (active_clients["first_purchase"] >= pd.Timestamp(filters.start_date)).sum()
-        recurrent_clients = max(0, len(active_clients) - new_clients)
+    kpi_sales = aggregates.get("kpi_sales", {})
+    revenue = kpi_sales.get("revenue", 0)
+    clients = kpi_sales.get("clients", 0)
+    kpi_clients = aggregates.get("clientes_kpi", {})
+    new_clients = kpi_clients.get("new_clients", 0)
+    recurrent_clients = kpi_clients.get("recurrent_clients", 0)
+    mxn_count = kpi_clients.get("mxn_count", 0)
+    usd_count = kpi_clients.get("usd_count", 0)
 
     st.markdown("### KPIs clave")
     col1, col2, col3, col4 = st.columns(4)
@@ -45,54 +40,46 @@ def render(filters: FilterState, ventas: pd.DataFrame) -> None:
     st.divider()
     st.markdown("### Ranking de clientes")
     if "CLIENT_NAME" not in filtered.columns:
-        st.info("No hay nombre de cliente disponible para este dataset.")
+        st.info("No hay nombre de cliente disponible en ventas.dbf.")
         return
 
-    invoice_col = "FACTURA_ID" if "FACTURA_ID" in filtered.columns else "SALE_ID"
-    client_table = (
-        filtered.groupby(["CLIENT_ID", "CLIENT_NAME"])
-        .agg(
-            revenue=(filters.revenue_column, "sum"),
-            units=("QTY", "sum"),
-            invoices=(invoice_col, "nunique"),
-            last_order=("SALE_DATE", "max"),
+    client_table = aggregates.get("clientes_summary", pd.DataFrame())
+    if client_table.empty:
+        st.info("No hay clientes suficientes para construir el ranking.")
+    else:
+        client_table["revenue_fmt"] = client_table["revenue"].map(
+            lambda value: fmt_money(value, filters.currency_label)
         )
-        .reset_index()
-        .sort_values("revenue", ascending=False)
-    )
-    client_table["revenue_fmt"] = client_table["revenue"].map(
-        lambda value: fmt_money(value, filters.currency_label)
-    )
-    client_table["units_fmt"] = client_table["units"].map(fmt_int)
-    client_table["invoices_fmt"] = client_table["invoices"].map(fmt_int)
+        client_table["units_fmt"] = client_table["units"].map(fmt_int)
+        client_table["invoices_fmt"] = client_table["invoices"].map(fmt_int)
 
-    st.dataframe(
-        client_table.head(20)[
-            [
-                "CLIENT_NAME",
-                "revenue_fmt",
-                "units_fmt",
-                "invoices_fmt",
-                "last_order",
-            ]
-        ],
-        use_container_width=True,
-        height=table_height(20),
-        column_config={
-            "CLIENT_NAME": "Cliente",
-            "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
-            "units_fmt": st.column_config.TextColumn("Unidades"),
-            "invoices_fmt": st.column_config.TextColumn("Facturas"),
-            "last_order": st.column_config.DatetimeColumn("Última compra", format="DD/MM/YYYY"),
-        },
-    )
+        st.dataframe(
+            client_table.head(20)[
+                [
+                    "CLIENT_NAME",
+                    "revenue_fmt",
+                    "units_fmt",
+                    "invoices_fmt",
+                    "last_order",
+                ]
+            ],
+            use_container_width=True,
+            height=table_height(20),
+            column_config={
+                "CLIENT_NAME": "Cliente",
+                "revenue_fmt": st.column_config.TextColumn(f"Ventas ({filters.currency_label})"),
+                "units_fmt": st.column_config.TextColumn("Unidades"),
+                "invoices_fmt": st.column_config.TextColumn("Facturas"),
+                "last_order": st.column_config.DatetimeColumn("Última compra", format="DD/MM/YYYY"),
+            },
+        )
 
     st.divider()
     st.markdown("### Origen de clientes")
-    if "CLIENT_ORIGIN" not in filtered.columns:
-        st.info("No hay origen de cliente disponible en este dataset.")
+    origin = aggregates.get("clientes_origin", pd.DataFrame())
+    if origin.empty:
+        st.info("No hay origen de cliente disponible en ventas.dbf.")
     else:
-        origin = filtered.groupby("CLIENT_ORIGIN")["CLIENT_ID"].nunique().reset_index(name="Clientes")
         fig_origin = px.bar(
             origin,
             x="CLIENT_ORIGIN",
@@ -100,6 +87,7 @@ def render(filters: FilterState, ventas: pd.DataFrame) -> None:
             color_discrete_sequence=plotly_colors(),
         )
         fig_origin.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_origin.update_traces(hovertemplate="%{x}<br>Clientes: %{y:,.0f}<extra></extra>")
         st.plotly_chart(fig_origin, use_container_width=True)
 
     st.divider()

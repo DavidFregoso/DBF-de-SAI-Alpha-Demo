@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from sai_alpha.etl import DataBundle
+from sai_alpha.perf import perf_logger
 from sai_alpha.ui import normalize_currency, validate_sales_schema
 
 
@@ -36,6 +37,7 @@ class FilterState:
     revenue_column: str
     unit_price_column: str
     fx_average: float | None
+    filter_key: str
 
 
 @dataclass
@@ -145,6 +147,62 @@ def _year_range_from_selection(year: int) -> tuple[date, date]:
     return date(year, 1, 1), date(year, 12, 31)
 
 
+def _format_week_label(week: int, year: int) -> str:
+    start, end = _week_range_from_selection(year, week)
+    return f"Semana {week} ({start.isoformat()} a {end.isoformat()})"
+
+
+def _format_month_label(month: int, year: int) -> str:
+    start, end = _month_range_from_selection(year, month)
+    month_name = calendar.month_name[int(month)]
+    return f"{month_name} ({start.isoformat()} a {end.isoformat()})"
+
+
+def _format_year_label(year: int) -> str:
+    start, end = _year_range_from_selection(year)
+    return f"{year} ({start.isoformat()} a {end.isoformat()})"
+
+
+def _normalize_filter_list(values: list[str] | None) -> tuple[str, ...]:
+    if not values:
+        return tuple()
+    return tuple(sorted({str(value) for value in values}))
+
+
+def build_filter_key(
+    start_date: date,
+    end_date: date,
+    currency_mode: str,
+    granularity: str,
+    brands: list[str] | None,
+    categories: list[str] | None,
+    vendors: list[str] | None,
+    sale_origins: list[str] | None,
+    client_origins: list[str] | None,
+    recommendation_sources: list[str] | None,
+    invoice_types: list[str] | None,
+    order_types: list[str] | None,
+    order_statuses: list[str] | None,
+) -> str:
+    def _serialize(values: list[str] | None) -> str:
+        if not values:
+            return "ALL"
+        return ",".join(sorted({str(value) for value in values}))
+
+    return (
+        f"{start_date.isoformat()}|{end_date.isoformat()}|{currency_mode}|{granularity}"
+        f"|brands:{_serialize(brands)}"
+        f"|categories:{_serialize(categories)}"
+        f"|vendors:{_serialize(vendors)}"
+        f"|sale_origins:{_serialize(sale_origins)}"
+        f"|client_origins:{_serialize(client_origins)}"
+        f"|recommendation_sources:{_serialize(recommendation_sources)}"
+        f"|invoice_types:{_serialize(invoice_types)}"
+        f"|order_types:{_serialize(order_types)}"
+        f"|order_statuses:{_serialize(order_statuses)}"
+    )
+
+
 def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
     periods = compute_available_periods(df_sales)
     st.session_state.setdefault("period_mode", "Último periodo disponible")
@@ -203,7 +261,14 @@ def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
             weeks = periods["weeks_by_year"].get(int(year), [periods["latest_week"]])
             if st.session_state.get("period_week") not in weeks:
                 st.session_state["period_week"] = weeks[-1]
-            week = st.sidebar.selectbox("Semana", weeks, key="period_week")
+            week = st.sidebar.selectbox(
+                "Semana",
+                weeks,
+                key="period_week",
+                format_func=lambda value, selected_year=int(year): _format_week_label(
+                    int(value), int(selected_year)
+                ),
+            )
             start_date, end_date = _week_range_from_selection(int(year), int(week))
         elif range_mode == "Mes":
             year = st.sidebar.selectbox("Año", periods["years"], key="period_month_year")
@@ -213,12 +278,19 @@ def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
             month = st.sidebar.selectbox(
                 "Mes",
                 months,
-                format_func=lambda value: calendar.month_name[int(value)],
+                format_func=lambda value, selected_year=int(year): _format_month_label(
+                    int(value), int(selected_year)
+                ),
                 key="period_month",
             )
             start_date, end_date = _month_range_from_selection(int(year), int(month))
         elif range_mode == "Año":
-            year = st.sidebar.selectbox("Año", periods["years"], key="period_year")
+            year = st.sidebar.selectbox(
+                "Año",
+                periods["years"],
+                key="period_year",
+                format_func=_format_year_label,
+            )
             start_date, end_date = _year_range_from_selection(int(year))
         else:
             date_start, date_end = st.sidebar.date_input(
@@ -350,58 +422,112 @@ def apply_sales_filters(
     ventas: pd.DataFrame,
     start_date: date,
     end_date: date,
-    brands: list[str],
-    categories: list[str],
-    vendors: list[str],
-    sale_origins: list[str],
-    client_origins: list[str],
-    recommendation_sources: list[str],
-    invoice_types: list[str],
-    order_types: list[str],
+    brands: tuple[str, ...],
+    categories: tuple[str, ...],
+    vendors: tuple[str, ...],
+    sale_origins: tuple[str, ...],
+    client_origins: tuple[str, ...],
+    recommendation_sources: tuple[str, ...],
+    invoice_types: tuple[str, ...],
+    order_types: tuple[str, ...],
 ) -> pd.DataFrame:
-    df = ventas.copy()
+    df = ventas
+    mask = pd.Series(True, index=df.index)
     if "SALE_DATE" in df.columns:
-        df = df[(df["SALE_DATE"] >= pd.Timestamp(start_date)) & (df["SALE_DATE"] <= pd.Timestamp(end_date))]
+        mask &= (df["SALE_DATE"] >= pd.Timestamp(start_date)) & (df["SALE_DATE"] <= pd.Timestamp(end_date))
     if "BRAND" in df.columns and brands:
-        df = df[df["BRAND"].isin(brands)]
+        mask &= df["BRAND"].isin(brands)
     if "CATEGORY" in df.columns and categories:
-        df = df[df["CATEGORY"].isin(categories)]
+        mask &= df["CATEGORY"].isin(categories)
     if "SELLER_NAME" in df.columns and vendors:
-        df = df[df["SELLER_NAME"].isin(vendors)]
+        mask &= df["SELLER_NAME"].isin(vendors)
     if "ORIGEN_VENTA" in df.columns and sale_origins:
-        df = df[df["ORIGEN_VENTA"].isin(sale_origins)]
+        mask &= df["ORIGEN_VENTA"].isin(sale_origins)
     if "CLIENT_ORIGIN" in df.columns and client_origins:
-        df = df[df["CLIENT_ORIGIN"].isin(client_origins)]
+        mask &= df["CLIENT_ORIGIN"].isin(client_origins)
     if "RECOMM_SOURCE" in df.columns and recommendation_sources:
-        df = df[df["RECOMM_SOURCE"].isin(recommendation_sources)]
+        mask &= df["RECOMM_SOURCE"].isin(recommendation_sources)
     if "TIPO_FACTURA" in df.columns and invoice_types:
-        df = df[df["TIPO_FACTURA"].isin(invoice_types)]
+        mask &= df["TIPO_FACTURA"].isin(invoice_types)
     if "TIPO_ORDEN" in df.columns and order_types:
-        df = df[df["TIPO_ORDEN"].isin(order_types)]
-    return df
+        mask &= df["TIPO_ORDEN"].isin(order_types)
+    return df.loc[mask]
 
 
 def apply_order_filters(
     pedidos: pd.DataFrame,
     start_date: date,
     end_date: date,
-    vendors: list[str],
-    sale_origins: list[str],
-    order_types: list[str],
-    order_statuses: list[str] | None,
+    vendors: tuple[str, ...],
+    sale_origins: tuple[str, ...],
+    order_types: tuple[str, ...],
+    order_statuses: tuple[str, ...] | None,
 ) -> pd.DataFrame:
-    df = pedidos.copy()
+    df = pedidos
+    mask = pd.Series(True, index=df.index)
     if "ORDER_DATE" in df.columns:
-        df = df[(df["ORDER_DATE"] >= pd.Timestamp(start_date)) & (df["ORDER_DATE"] <= pd.Timestamp(end_date))]
+        mask &= (df["ORDER_DATE"] >= pd.Timestamp(start_date)) & (df["ORDER_DATE"] <= pd.Timestamp(end_date))
     if vendors and "SELLER_NAME" in df.columns:
-        df = df[df["SELLER_NAME"].isin(vendors)]
+        mask &= df["SELLER_NAME"].isin(vendors)
     if sale_origins and "ORIGEN_VENTA" in df.columns:
-        df = df[df["ORIGEN_VENTA"].isin(sale_origins)]
+        mask &= df["ORIGEN_VENTA"].isin(sale_origins)
     if order_types and "TIPO_ORDEN" in df.columns:
-        df = df[df["TIPO_ORDEN"].isin(order_types)]
+        mask &= df["TIPO_ORDEN"].isin(order_types)
     if order_statuses and "STATUS" in df.columns:
-        df = df[df["STATUS"].isin(order_statuses)]
-    return df
+        mask &= df["STATUS"].isin(order_statuses)
+    return df.loc[mask]
+
+
+@st.cache_data(show_spinner=False)
+def cached_apply_sales_filters(
+    ventas: pd.DataFrame,
+    start_date: date,
+    end_date: date,
+    brands: tuple[str, ...],
+    categories: tuple[str, ...],
+    vendors: tuple[str, ...],
+    sale_origins: tuple[str, ...],
+    client_origins: tuple[str, ...],
+    recommendation_sources: tuple[str, ...],
+    invoice_types: tuple[str, ...],
+    order_types: tuple[str, ...],
+    filter_key: str,
+) -> pd.DataFrame:
+    return apply_sales_filters(
+        ventas,
+        start_date,
+        end_date,
+        brands,
+        categories,
+        vendors,
+        sale_origins,
+        client_origins,
+        recommendation_sources,
+        invoice_types,
+        order_types,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def cached_apply_order_filters(
+    pedidos: pd.DataFrame,
+    start_date: date,
+    end_date: date,
+    vendors: tuple[str, ...],
+    sale_origins: tuple[str, ...],
+    order_types: tuple[str, ...],
+    order_statuses: tuple[str, ...] | None,
+    filter_key: str,
+) -> pd.DataFrame:
+    return apply_order_filters(
+        pedidos,
+        start_date,
+        end_date,
+        vendors,
+        sale_origins,
+        order_types,
+        order_statuses,
+    )
 
 
 def apply_global_filters(
@@ -447,31 +573,61 @@ def build_filter_state(
         ventas, str(global_filters["currency_view"])
     )
 
-    sales_filtered = apply_sales_filters(
-        ventas_normalized,
+    filter_key = build_filter_key(
         global_filters["start_date"],
         global_filters["end_date"],
-        advanced_filters.get("brands", []),
-        advanced_filters.get("categories", []),
-        advanced_filters.get("vendors", []),
-        advanced_filters.get("sale_origins", []),
-        advanced_filters.get("client_origins", []),
-        advanced_filters.get("recommendation_sources", []),
-        advanced_filters.get("invoice_types", []),
-        advanced_filters.get("order_types", []),
+        str(global_filters["currency_view"]),
+        str(global_filters["granularity"]),
+        advanced_filters.get("brands"),
+        advanced_filters.get("categories"),
+        advanced_filters.get("vendors"),
+        advanced_filters.get("sale_origins"),
+        advanced_filters.get("client_origins"),
+        advanced_filters.get("recommendation_sources"),
+        advanced_filters.get("invoice_types"),
+        advanced_filters.get("order_types"),
+        advanced_filters.get("order_statuses"),
     )
+
+    brands = _normalize_filter_list(advanced_filters.get("brands"))
+    categories = _normalize_filter_list(advanced_filters.get("categories"))
+    vendors = _normalize_filter_list(advanced_filters.get("vendors"))
+    sale_origins = _normalize_filter_list(advanced_filters.get("sale_origins"))
+    client_origins = _normalize_filter_list(advanced_filters.get("client_origins"))
+    recommendation_sources = _normalize_filter_list(advanced_filters.get("recommendation_sources"))
+    invoice_types = _normalize_filter_list(advanced_filters.get("invoice_types"))
+    order_types = _normalize_filter_list(advanced_filters.get("order_types"))
+    order_statuses = _normalize_filter_list(advanced_filters.get("order_statuses"))
+
+    with perf_logger("apply_sales_filters"):
+        sales_filtered = cached_apply_sales_filters(
+            ventas_normalized,
+            global_filters["start_date"],
+            global_filters["end_date"],
+            brands,
+            categories,
+            vendors,
+            sale_origins,
+            client_origins,
+            recommendation_sources,
+            invoice_types,
+            order_types,
+            filter_key,
+        )
 
     pedidos_filtered = None
     if pedidos is not None and not pedidos.empty:
-        pedidos_filtered = apply_order_filters(
-            pedidos,
-            global_filters["start_date"],
-            global_filters["end_date"],
-            advanced_filters.get("vendors", []),
-            advanced_filters.get("sale_origins", []),
-            advanced_filters.get("order_types", []),
-            advanced_filters.get("order_statuses"),
-        )
+        with perf_logger("apply_order_filters"):
+            pedidos_filtered = cached_apply_order_filters(
+                pedidos,
+                global_filters["start_date"],
+                global_filters["end_date"],
+                vendors,
+                sale_origins,
+                order_types,
+                order_statuses if order_statuses else None,
+                filter_key,
+            )
 
     fx_average = None
     if "USD_MXN_RATE" in ventas_normalized.columns:
@@ -489,15 +645,15 @@ def build_filter_state(
         currency_mode=str(global_filters["currency_view"]),
         period_mode=str(global_filters["period_mode"]),
         range_mode=str(global_filters["range_mode"]),
-        brands=advanced_filters.get("brands", []),
-        categories=advanced_filters.get("categories", []),
-        vendors=advanced_filters.get("vendors", []),
-        sale_origins=advanced_filters.get("sale_origins", []),
-        client_origins=advanced_filters.get("client_origins", []),
-        recommendation_sources=advanced_filters.get("recommendation_sources", []),
-        invoice_types=advanced_filters.get("invoice_types", []),
-        order_types=advanced_filters.get("order_types", []),
-        order_statuses=advanced_filters.get("order_statuses"),
+        brands=list(brands),
+        categories=list(categories),
+        vendors=list(vendors),
+        sale_origins=list(sale_origins),
+        client_origins=list(client_origins),
+        recommendation_sources=list(recommendation_sources),
+        invoice_types=list(invoice_types),
+        order_types=list(order_types),
+        order_statuses=list(order_statuses) if order_statuses else None,
         sales=sales_filtered,
         clients=bundle.clientes.copy() if bundle.clientes is not None else pd.DataFrame(),
         products=bundle.productos.copy() if bundle.productos is not None else pd.DataFrame(),
@@ -506,6 +662,7 @@ def build_filter_state(
         revenue_column=revenue_column,
         unit_price_column=unit_price_column,
         fx_average=fx_average,
+        filter_key=filter_key,
     )
 
     ventas_filtrado, clientes_filtrado, productos_filtrado, pedidos_filtrado = apply_global_filters(

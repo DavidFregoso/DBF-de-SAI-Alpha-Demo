@@ -113,9 +113,17 @@ echo DBF dir: %SAI_ALPHA_DBF_DIR%
 
 pushd "%APP_DIR%" >nul
 
-set "DBF_COUNT=0"
-for /f %%A in ('dir /b "%DBF_DIR%\*.dbf" 2^>nul') do set /a DBF_COUNT+=1
-if !DBF_COUNT! LSS 1 (
+set "NEEDS_REGEN=0"
+for %%F in (productos.dbf clientes.dbf vendedores.dbf ventas.dbf tipo_cambio.dbf facturas.dbf notas_credito.dbf pedidos.dbf) do (
+  if not exist "%DBF_DIR%\%%F" (
+    set "NEEDS_REGEN=1"
+  ) else (
+    for %%Z in ("%DBF_DIR%\%%F") do (
+      if %%~zZ LSS 1024 set "NEEDS_REGEN=1"
+    )
+  )
+)
+if !NEEDS_REGEN! EQU 1 (
   echo Generating mock DBF data...
   "%PYTHON_EXE%" "generate_dbfs.py"
   if errorlevel 1 (

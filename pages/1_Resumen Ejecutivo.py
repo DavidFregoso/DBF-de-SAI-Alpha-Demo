@@ -22,7 +22,7 @@ from sai_alpha.ui import (
     render_sidebar_filters,
     table_height,
 )
-from sai_alpha.etl import resolve_dbf_dir
+from sai_alpha.etl import normalize_columns, resolve_dbf_dir
 
 
 st.set_page_config(page_title="Resumen Ejecutivo", page_icon="📊", layout="wide")
@@ -85,7 +85,7 @@ product_sales = (
     .reset_index()
 )
 product_sales["avg_daily_units"] = product_sales["units"] / period_days
-inventory = bundle.productos.copy()
+inventory = normalize_columns(bundle.productos.copy(), "productos", resolve_dbf_dir() / "productos.dbf")
 merge_keys = ["PRODUCT_ID", "BRAND", "CATEGORY"]
 if "PRODUCT_NAME" in inventory.columns and "PRODUCT_NAME" in product_sales.columns:
     merge_keys.append("PRODUCT_NAME")
@@ -104,6 +104,7 @@ if missing_inventory_columns:
     st.error(
         "Faltan columnas requeridas para 'Productos por agotarse': "
         + ", ".join(missing_inventory_columns)
+        + ". Regenera los DBFs si acabas de actualizar el demo."
     )
     dbf_path = resolve_dbf_dir() / "productos.dbf"
     st.write("Fuente DBF:", str(dbf_path))

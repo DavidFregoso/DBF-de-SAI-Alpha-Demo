@@ -71,11 +71,15 @@ def validate_sales_schema(ventas: pd.DataFrame) -> list[str]:
     return sorted(REQUIRED_SALES_COLUMNS - set(ventas.columns))
 
 
-def _warn_once(key: str, message: str) -> None:
-    if st.session_state.get(key):
+def record_schema_message(message: str) -> None:
+    messages = st.session_state.setdefault("schema_messages", [])
+    if message in messages:
         return
-    st.warning(message)
-    st.session_state[key] = True
+    messages.append(message)
+
+
+def get_schema_messages() -> list[str]:
+    return list(st.session_state.get("schema_messages", []))
 
 
 def validate_bundle(bundle: DataBundle) -> DataBundle:
@@ -89,8 +93,7 @@ def validate_bundle(bundle: DataBundle) -> DataBundle:
 
     ventas_missing = sorted(ventas_required - set(ventas.columns))
     if ventas_missing:
-        _warn_once(
-            "ventas_missing_columns",
+        record_schema_message(
             "Se agregaron columnas faltantes en ventas.dbf: " + ", ".join(ventas_missing),
         )
     ventas = normalize_utils.ensure_columns(
@@ -107,8 +110,7 @@ def validate_bundle(bundle: DataBundle) -> DataBundle:
 
     productos_missing = sorted(productos_required - set(productos.columns))
     if productos_missing:
-        _warn_once(
-            "productos_missing_columns",
+        record_schema_message(
             "Se agregaron columnas faltantes en productos.dbf: " + ", ".join(productos_missing),
         )
     productos = normalize_utils.ensure_columns(
@@ -125,8 +127,7 @@ def validate_bundle(bundle: DataBundle) -> DataBundle:
     if pedidos is not None:
         pedidos_missing = sorted(pedidos_required - set(pedidos.columns))
         if pedidos_missing:
-            _warn_once(
-                "pedidos_missing_columns",
+            record_schema_message(
                 "Se agregaron columnas faltantes en pedidos.dbf: " + ", ".join(pedidos_missing),
             )
         pedidos = normalize_utils.ensure_columns(
@@ -226,6 +227,17 @@ def apply_theme() -> None:
                 padding-left: 0.6rem;
                 font-weight: 600;
                 font-size: 1.1rem;
+            }}
+            .sidebar-title {{
+                font-weight: 700;
+                font-size: 1.05rem;
+                color: {primary};
+                margin-bottom: 0.1rem;
+            }}
+            .sidebar-subtitle {{
+                color: #6c757d;
+                font-size: 0.85rem;
+                margin-top: 0;
             }}
             [data-testid="stSidebarNav"],
             [data-testid="stSidebarNavItems"],
@@ -393,7 +405,7 @@ def format_int(value: float | int) -> str:
     return fmt_int(value)
 
 
-def render_page_header(section_title: str, subtitle: str = "Abarrotes / Bebidas / Botanas / Lácteos") -> None:
+def render_page_header(section_title: str, subtitle: str = "Dashboard Ejecutivo") -> None:
     st.markdown(f"<div class='section-title'>{section_title}</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='app-subtitle'>{subtitle}</div>", unsafe_allow_html=True)
 
@@ -404,8 +416,8 @@ def render_app_header(period_label: str, currency_label: str, last_update: str |
         f"""
         <div class="top-header">
             <div>
-                <div class="top-header-title">Demo Tienda – Dashboard Ejecutivo</div>
-                <div class="top-header-sub">Panel ejecutivo de desempeño comercial</div>
+                <div class="top-header-title">Demo Surtidora de Abarrotes</div>
+                <div class="top-header-sub">Dashboard Ejecutivo</div>
             </div>
             <div class="status-pills">
                 <span class="status-pill">Periodo seleccionado: {period_label}</span>

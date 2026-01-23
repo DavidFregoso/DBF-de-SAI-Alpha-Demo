@@ -360,6 +360,34 @@ def _assign_stock(
         product["MIN_STK"] = min_stock
         product["MAX_STK"] = max_stock
 
+    if end.year == 2026 and end.month == 1:
+        total_products = len(products)
+        if total_products == 0:
+            return
+        low_count = min(5, total_products)
+        over_count = min(5, max(0, total_products - low_count))
+        indices = list(range(total_products))
+        low_indices = rng.sample(indices, k=low_count)
+        remaining = [idx for idx in indices if idx not in low_indices]
+        over_indices = rng.sample(remaining, k=over_count) if remaining else []
+
+        for idx in low_indices:
+            product = products[idx]
+            min_stock = max(8, int(product.get("MIN_STK", 0) or 8))
+            product["MIN_STK"] = min_stock
+            product["MAX_STK"] = max(int(product.get("MAX_STK", 0)), min_stock + 5)
+            product["STOCK_QTY"] = max(0, int(min_stock * rng.uniform(0.4, 0.7)))
+
+        for idx in over_indices:
+            product = products[idx]
+            max_stock = max(20, int(product.get("MAX_STK", 0) or 20))
+            min_stock = max(8, int(product.get("MIN_STK", 0) or 8))
+            if max_stock <= min_stock:
+                max_stock = min_stock + rng.randint(8, 18)
+            product["MIN_STK"] = min_stock
+            product["MAX_STK"] = max_stock
+            product["STOCK_QTY"] = int(max_stock * rng.uniform(1.15, 1.4))
+
 
 def _assign_client_last_purchase(rng: random.Random, clients: list[dict], sales: list[dict], end: date) -> None:
     last_purchase: dict[int, date] = {}

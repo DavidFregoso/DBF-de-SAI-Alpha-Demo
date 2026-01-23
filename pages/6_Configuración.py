@@ -10,8 +10,8 @@ init_session_state()
 apply_theme()
 render_page_nav("Configuración")
 
-st.markdown("<div class='app-header'>Demo Tienda – Dashboard Ejecutivo</div>", unsafe_allow_html=True)
-st.caption("Abarrotes / Bebidas / Botanas / Lácteos")
+st.markdown("<div class='app-header'>Demo Surtidora de Abarrotes</div>", unsafe_allow_html=True)
+st.caption("Dashboard Ejecutivo")
 
 st.title("Configuración")
 

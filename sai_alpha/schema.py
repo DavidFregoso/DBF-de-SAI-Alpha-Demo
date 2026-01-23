@@ -75,6 +75,11 @@ def canonicalize_products(df_products: pd.DataFrame) -> pd.DataFrame:
         "PRODUCT_NAME",
         [
             "PRODUCT_NAME",
+            "PROD_NAME",
+            "PRD_NAME",
+            "PRODUCT_NM",
+            "PRDNAME",
+            "PRODUCTNAME",
             "PRODUCT_NAME_X",
             "PRODUCT_NAME_Y",
             "DESCR",
@@ -85,6 +90,8 @@ def canonicalize_products(df_products: pd.DataFrame) -> pd.DataFrame:
         ],
         default=DEFAULT_TEXT,
     )
+    df = coalesce_columns(df, "BRAND", ["BRAND", "MARCA", "LINEA", "FABRICANTE"], default=DEFAULT_TEXT)
+    df = coalesce_columns(df, "CATEGORY", ["CATEGORY", "CATEGORIA", "CAT", "DEPTO", "DEPARTAMENTO"])
     df = coalesce_columns(df, "STOCK_QTY", ["STOCK_QTY", "EXISTENCIA", "STOCK"], default=0)
     df = coalesce_columns(df, "COST_MXN", ["COST_MXN", "COSTO", "COSTO_MXN"], default=0)
     df = coalesce_columns(df, "PRICE_MXN", ["PRICE_MXN", "PRECIO", "PRECIO_MXN"], default=0)
@@ -103,6 +110,22 @@ def canonicalize_sales(df_sales: pd.DataFrame) -> pd.DataFrame:
     df = coalesce_columns(df, "FACT_ID", ["FACT_ID", "FACTURA_ID", "SALE_ID"])
     df = coalesce_columns(df, "CLIENT_ID", ["CLIENT_ID", "CLNT_ID", "ID_CLIENTE"])
     df = coalesce_columns(df, "PRODUCT_ID", ["PRODUCT_ID", "PROD_ID", "ID_PRODUCTO"])
+    df = coalesce_columns(
+        df,
+        "PRODUCT_NAME",
+        [
+            "PRODUCT_NAME",
+            "PROD_NAME",
+            "PRD_NAME",
+            "PRODUCT_NM",
+            "PRDNAME",
+            "PRODUCTNAME",
+            "DESCR",
+            "DESCRIPTION",
+            "NOMBRE",
+        ],
+        default=DEFAULT_TEXT,
+    )
     df = coalesce_columns(df, "QTY", ["QTY", "QUANTITY", "CANTIDAD", "CANT"], default=0)
     df = coalesce_columns(df, "TOTAL_MXN", ["TOTAL_MXN", "AMOUNT_MXN", "AMT_MXN", "REVENUE_MXN"])
     df = coalesce_columns(df, "TOTAL_USD", ["TOTAL_USD", "AMOUNT_USD", "AMT_USD", "REVENUE_USD"])

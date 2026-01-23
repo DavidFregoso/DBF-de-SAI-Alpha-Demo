@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import calendar
 
 import pandas as pd
@@ -9,7 +9,7 @@ import streamlit as st
 
 from sai_alpha.etl import DataBundle
 from sai_alpha.perf import perf_logger
-from sai_alpha.ui import normalize_currency, validate_sales_schema
+from sai_alpha.ui import normalize_currency, record_schema_message, validate_sales_schema
 
 
 @dataclass
@@ -261,6 +261,17 @@ def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
         ["Auto", "Diario", "Semanal", "Mensual", "Anual"],
         key="granularity",
     )
+
+    if st.sidebar.button("Actualizar ahora", key="refresh_now"):
+        refreshed_at = datetime.now()
+        st.session_state["last_refresh_at"] = refreshed_at
+        st.toast(f"Datos actualizados (simulación) – {refreshed_at:%d/%m/%Y %H:%M}")
+
+    last_refresh = st.session_state.get("last_refresh_at")
+    if last_refresh:
+        st.sidebar.caption(f"Última actualización: {last_refresh:%d/%m/%Y %H:%M}")
+    else:
+        st.sidebar.caption("Última actualización: pendiente")
 
     if period_mode == "Último periodo disponible":
         if range_mode == "Semana":
@@ -590,7 +601,9 @@ def build_filter_state(
 ) -> FilterState:
     missing_columns = validate_sales_schema(ventas)
     if missing_columns:
-        st.sidebar.info("Columnas faltantes en ventas (se usarán fallbacks): " + ", ".join(missing_columns))
+        record_schema_message(
+            "Columnas faltantes en ventas (se usarán fallbacks): " + ", ".join(missing_columns)
+        )
 
     ventas_normalized, revenue_column, unit_price_column, currency_label = normalize_currency(
         ventas, str(global_filters["currency_view"])

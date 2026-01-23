@@ -8,6 +8,7 @@ import pandas as pd
 from dbfread import DBF
 import numpy as np
 
+from sai_alpha import normalize as normalize_utils
 from sai_alpha.schema import DEFAULT_TEXT, coalesce_columns
 
 
@@ -38,6 +39,9 @@ COMMON_ALIASES: dict[str, list[str]] = {
         "PRODUCT_NAME",
         "PROD_NAME",
         "PRD_NAME",
+        "PRODUCT_NM",
+        "PRDNAME",
+        "PRODUCTNAME",
         "NOMBRE",
         "NOMPROD",
         "PRODUCTO",
@@ -106,13 +110,35 @@ TABLE_ALIASES: dict[str, dict[str, list[str]]] = {
         ],
         "FACTURA_ID": ["FACTURA_ID", "FACT_ID", "ID_FACTURA"],
         "SALE_ID": ["SALE_ID", "VENTA_ID", "ID_VENTA"],
-        "PRODUCT_NAME": ["PRODUCT_NAME", "PROD_NAME", "PRD_NAME"],
+        "PRODUCT_NAME": ["PRODUCT_NAME", "PROD_NAME", "PRD_NAME", "PRODUCT_NM", "PRDNAME", "PRODUCTNAME"],
+        "PRICE_MXN": [
+            "PRICE_MXN",
+            "PRICE",
+            "PRC_MXN",
+            "PR_MXN",
+            "P_MXN",
+            "PRICE_MN",
+            "PRECIO",
+            "PREC_MXN",
+        ],
+        "PRICE_USD": ["PRICE_USD", "PRECIO_USD", "PRICE_DLLS", "PRICE_US"],
     },
     "productos": {
         "PRODUCT_ID": ["PRODUCT_ID", "PROD_ID", "PRODID"],
-        "PRODUCT_NAME": ["PRODUCT_NAME", "PROD_NAME", "PRD_NAME"],
-        "COST_MXN": ["COST_MXN", "BASE_COST", "COSTO", "COSTO_MXN"],
-        "PRICE_MXN": ["PRICE_MXN", "BASE_PRICE", "PRECIO", "PRECIO_MXN"],
+        "PRODUCT_NAME": ["PRODUCT_NAME", "PROD_NAME", "PRD_NAME", "PRODUCT_NM", "PRDNAME", "PRODUCTNAME"],
+        "COST_MXN": ["COST_MXN", "BASE_COST", "COSTO", "COSTO_MXN", "COST", "CST_MXN"],
+        "PRICE_MXN": [
+            "PRICE_MXN",
+            "BASE_PRICE",
+            "PRICE",
+            "PRC_MXN",
+            "PR_MXN",
+            "P_MXN",
+            "PRICE_MN",
+            "PRECIO",
+            "PRECIO_MXN",
+            "PREC_MXN",
+        ],
         "STOCK_QTY": ["STOCK_QTY", "EXISTENCIA", "STOCK", "INV", "INVENTARIO", "EXIST", "ON_HAND"],
         "MIN_STOCK": ["MIN_STOCK", "MIN_STK", "MINIMO", "MIN_INV"],
         "MAX_STOCK": ["MAX_STOCK", "MAX_STK", "MAXIMO", "MAX_INV"],
@@ -177,9 +203,23 @@ TABLE_ALIASES: dict[str, dict[str, list[str]]] = {
         "STATUS": ["STATUS", "ESTATUS"],
         "QTY_ORDER": ["QTY_ORDER", "QTY", "QUANTITY", "CANTIDAD", "CANT"],
         "QTY_PENDING": ["QTY_PENDING", "QTY_PEND", "PENDIENTE", "PEND"],
-        "PRICE_MXN": ["PRICE_MXN", "PRECIO", "PRECIO_MXN", "UNIT_PRICE", "UNIT_PRICE_MXN"],
+        "PRICE_MXN": [
+            "PRICE_MXN",
+            "PRICE",
+            "PRC_MXN",
+            "PR_MXN",
+            "P_MXN",
+            "PRICE_MN",
+            "PRECIO",
+            "PREC_MXN",
+            "PRECIO_MXN",
+            "UNIT_PRICE",
+            "UNIT_PRICE_MXN",
+        ],
+        "PRICE_USD": ["PRICE_USD", "PRECIO_USD", "PRICE_DLLS", "PRICE_US"],
+        "FX_RATE": ["FX_RATE", "USD_MXN_RATE", "USD_MXN", "EXCH_RATE", "EXCHANGE_RATE", "TC", "TIPO_CAMBIO"],
         "ORDER_ID": ["ORDER_ID", "PEDIDO_ID", "ID_PEDIDO"],
-        "PRODUCT_NAME": ["PRODUCT_NAME", "PROD_NAME", "PRD_NAME"],
+        "PRODUCT_NAME": ["PRODUCT_NAME", "PROD_NAME", "PRD_NAME", "PRODUCT_NM", "PRDNAME", "PRODUCTNAME"],
     },
 }
 
@@ -189,26 +229,38 @@ DATE_COLUMNS = {"SALE_DATE", "ORDER_DATE", "DATE"}
 
 
 def _standardize_column_names(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    normalized = []
-    for column in df.columns:
-        cleaned = str(column).strip().upper().replace("-", "_").replace(" ", "_")
-        while "__" in cleaned:
-            cleaned = cleaned.replace("__", "_")
-        normalized.append(cleaned)
-    df.columns = normalized
-    return df
+    return normalize_utils.normalize_cols(df)
 
 
 def _apply_aliases(df: pd.DataFrame, aliases: dict[str, list[str]]) -> pd.DataFrame:
-    rename_map: dict[str, str] = {}
-    for canonical, candidates in aliases.items():
-        for candidate in candidates:
-            if candidate in df.columns:
-                rename_map[candidate] = canonical
-                break
-    if rename_map:
-        df = df.rename(columns=rename_map)
+    return normalize_utils.apply_aliases(df, aliases)
+
+
+def _ensure_table_columns(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+    defaults: dict[str, object] = {}
+    if table_name == "productos":
+        defaults = {
+            "PRODUCT_ID": "",
+            "PRODUCT_NAME": DEFAULT_TEXT,
+            "BRAND": DEFAULT_TEXT,
+            "CATEGORY": DEFAULT_TEXT,
+            "STOCK_QTY": 0,
+            "COST_MXN": 0,
+            "PRICE_MXN": 0,
+        }
+    elif table_name == "pedidos":
+        defaults = {
+            "QTY_PENDING": 0,
+            "PRICE_MXN": 0,
+        }
+    elif table_name == "ventas":
+        defaults = {
+            "UNIT_PRICE_MXN": 0,
+            "PRICE_MXN": 0,
+            "USD_MXN_RATE": pd.NA,
+        }
+    if defaults:
+        df = normalize_utils.ensure_columns(df, defaults)
     return df
 
 
@@ -219,11 +271,30 @@ def normalize_columns(df: pd.DataFrame, table_name: str, source_path: Path) -> p
     normalized = _apply_aliases(normalized, COMMON_ALIASES)
 
     if "PRODUCT_NAME_X" in normalized.columns or "PRODUCT_NAME_Y" in normalized.columns:
-        normalized = coalesce_columns(
+        normalized = normalize_utils.coalesce_columns(
             normalized,
             "PRODUCT_NAME",
             ["PRODUCT_NAME", "PRODUCT_NAME_X", "PRODUCT_NAME_Y"],
             drop_candidates=True,
+        )
+
+    if table_name.lower() in {"ventas", "productos", "pedidos"}:
+        normalized = normalize_utils.coalesce_columns(
+            normalized,
+            "PRICE_MXN",
+            [
+                "PRICE_MXN",
+                "PRICE",
+                "PRC_MXN",
+                "PR_MXN",
+                "P_MXN",
+                "PRICE_MN",
+                "PRECIO",
+                "PREC_MXN",
+                "PRECIO_MXN",
+                "UNIT_PRICE",
+                "UNIT_PRICE_MXN",
+            ],
         )
 
     for col in DATE_COLUMNS:
@@ -245,6 +316,7 @@ def normalize_columns(df: pd.DataFrame, table_name: str, source_path: Path) -> p
     if "SELLER_ID" in normalized.columns and "VENDOR_ID" not in normalized.columns:
         normalized["VENDOR_ID"] = normalized["SELLER_ID"]
 
+    normalized = _ensure_table_columns(normalized, table_name.lower())
     return normalized
 
 

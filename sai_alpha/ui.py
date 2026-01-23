@@ -345,7 +345,7 @@ def build_time_series(df: pd.DataFrame, date_col: str, value_col: str, granulari
     if granularity == "Semanal":
         return df.groupby(pd.Grouper(key=date_col, freq="W-MON"))[value_col].sum().reset_index()
     if granularity == "Mensual":
-        return df.groupby(pd.Grouper(key=date_col, freq="M"))[value_col].sum().reset_index()
+        return df.groupby(pd.Grouper(key=date_col, freq="ME"))[value_col].sum().reset_index()
     return df.groupby(pd.Grouper(key=date_col, freq="Y"))[value_col].sum().reset_index()
 
 

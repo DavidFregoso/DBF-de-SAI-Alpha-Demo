@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import streamlit as st
 
 from sai_alpha.etl import resolve_dbf_dir
@@ -32,10 +30,8 @@ def build_sidebar(
         label_visibility="visible",
     )
 
-    logo_path = Path("assets/logo.svg")
-    if logo_path.exists():
-        st.sidebar.image(str(logo_path), width=160)
-    st.sidebar.caption("Tablero comercial para dirección")
+    st.sidebar.markdown("<div class='sidebar-title'>Demo Surtidora de Abarrotes</div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div class='sidebar-subtitle'>Dashboard Ejecutivo</div>", unsafe_allow_html=True)
     st.sidebar.divider()
 
     with st.sidebar.expander("Filtros globales", expanded=True):
@@ -64,7 +60,7 @@ def build_sidebar(
     last_update = st.session_state.get("data_max_date")
     if last_update:
         st.sidebar.caption(f"Registros filtrados: {len(filters.sales):,}")
-        st.sidebar.caption(f"Última actualización: {last_update:%d/%m/%Y}")
+        st.sidebar.caption(f"Últimos datos: {last_update:%d/%m/%Y}")
     else:
         st.sidebar.caption(f"Registros filtrados: {len(filters.sales):,}")
     return selected, filters
@@ -72,7 +68,7 @@ def build_sidebar(
 
 def run_app() -> None:
     st.set_page_config(
-        page_title="Demo Tienda – Dashboard Ejecutivo",
+        page_title="Demo Surtidora de Abarrotes – Dashboard Ejecutivo",
         page_icon="🛒",
         layout="wide",
         initial_sidebar_state="expanded",

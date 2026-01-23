@@ -4,7 +4,7 @@ import streamlit as st
 
 from sai_alpha.formatting import fmt_int
 from sai_alpha.schema import require_columns
-from sai_alpha.ui import render_page_header
+from sai_alpha.ui import get_schema_messages, render_page_header
 
 
 def _render_dataset_card(title: str, df, required: set[str]) -> None:
@@ -39,8 +39,16 @@ def render(bundle, ventas) -> None:
     )
 
     st.divider()
-    st.markdown("### Diagnóstico de datos")
+    st.markdown("### Diagnóstico / Ajustes automáticos")
     st.caption("Esto significa: validamos que las tablas clave estén disponibles sin detener la demo.")
+
+    schema_messages = get_schema_messages()
+    if schema_messages:
+        with st.expander("Ajustes automáticos aplicados", expanded=True):
+            for message in schema_messages:
+                st.info(message)
+    else:
+        st.caption("Sin ajustes automáticos detectados en esta sesión.")
 
     _render_dataset_card(
         "Ventas",

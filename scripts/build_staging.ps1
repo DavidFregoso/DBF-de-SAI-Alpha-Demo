@@ -158,7 +158,7 @@ echo Starting Streamlit on http://127.0.0.1:%PORT%
 echo LAN access: http://%LAN_IP%:%PORT%
 start "" "http://127.0.0.1:%PORT%"
 
-"%PYTHON_EXE%" -m streamlit run "app.py" --server.address 0.0.0.0 --server.port %PORT%
+"%PYTHON_EXE%" -m streamlit run "app.py" --server.address 0.0.0.0 --server.port %PORT% --server.headless true --browser.serverAddress 127.0.0.1
 popd >nul
 
 endlocal

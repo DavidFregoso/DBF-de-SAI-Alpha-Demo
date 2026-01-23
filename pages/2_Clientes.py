@@ -31,8 +31,8 @@ if ventas.empty:
 filters = render_sidebar_filters(ventas, pedidos)
 filtered = filters.sales
 
-st.markdown("<div class='app-header'>Demo Tienda – Dashboard Ejecutivo</div>", unsafe_allow_html=True)
-st.caption("Abarrotes / Bebidas / Botanas / Lácteos")
+st.markdown("<div class='app-header'>Demo Surtidora de Abarrotes</div>", unsafe_allow_html=True)
+st.caption("Dashboard Ejecutivo")
 
 st.title("Clientes")
 

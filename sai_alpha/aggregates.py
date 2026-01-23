@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from sai_alpha import normalize as normalize_utils
 from sai_alpha.perf import perf_logger
 from sai_alpha.schema import canonicalize_products, require_columns, resolve_column
 from sai_alpha.ui import build_time_series
@@ -214,7 +215,49 @@ def build_aggregates(
         aggregates["inventory_over"] = over_stock
 
         if pedidos_filtrados is not None and not pedidos_filtrados.empty:
-            pending = pedidos_filtrados[pedidos_filtrados["STATUS"].isin(["Pendiente", "Parcial"])].copy()
+            pending = pedidos_filtrados.copy()
+            if "STATUS" not in pending.columns:
+                pending["STATUS"] = "Pendiente"
+            pending = pending[pending["STATUS"].isin(["Pendiente", "Parcial"])].copy()
+            if "QTY_PENDING" not in pending.columns:
+                pending["QTY_PENDING"] = 0
+            price_missing = "PRICE_MXN" not in pending.columns
+            if price_missing:
+                pending["PRICE_MXN"] = pd.NA
+            pending = normalize_utils.coalesce_columns(
+                pending,
+                "PRICE_MXN",
+                [
+                    "PRICE_MXN",
+                    "PRICE",
+                    "PRC_MXN",
+                    "PR_MXN",
+                    "P_MXN",
+                    "PRICE_MN",
+                    "PRECIO",
+                    "PREC_MXN",
+                    "PRECIO_MXN",
+                    "UNIT_PRICE",
+                    "UNIT_PRICE_MXN",
+                ],
+            )
+            rate_col = resolve_column(
+                pending,
+                ["FX_RATE", "USD_MXN_RATE", "USD_MXN", "EXCH_RATE", "EXCHANGE_RATE", "TC", "TIPO_CAMBIO"],
+            )
+            if "PRICE_USD" in pending.columns and rate_col:
+                usd_prices = pd.to_numeric(pending["PRICE_USD"], errors="coerce")
+                rates = pd.to_numeric(pending[rate_col], errors="coerce")
+                pending["PRICE_MXN"] = pending["PRICE_MXN"].where(
+                    pending["PRICE_MXN"].notna(),
+                    usd_prices * rates,
+                )
+            pending["PRICE_MXN"] = pd.to_numeric(pending["PRICE_MXN"], errors="coerce").fillna(0)
+            pending["QTY_PENDING"] = pd.to_numeric(pending["QTY_PENDING"], errors="coerce").fillna(0)
+            if price_missing or pending["PRICE_MXN"].eq(0).all():
+                aggregates["pedidos_warnings"] = [
+                    "No se encontró PRICE_MXN en pedidos.dbf. Se aplicó un fallback o se usó 0."
+                ]
             pending["PENDING_VALUE"] = pending["QTY_PENDING"].fillna(0) * pending["PRICE_MXN"].fillna(0)
             aggregates["pedidos_pending"] = pending
             if "ORDER_DATE" in pending.columns:

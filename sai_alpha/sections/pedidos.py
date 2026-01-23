@@ -16,6 +16,8 @@ def render(filters: FilterState, aggregates: dict) -> None:
     if pending.empty:
         st.warning("No hay pedidos en el rango seleccionado.")
         return
+    for warning in aggregates.get("pedidos_warnings", []):
+        st.warning(warning)
 
     pending_count = pending["ORDER_ID"].nunique() if "ORDER_ID" in pending.columns else len(pending)
     pending_value = pending["PENDING_VALUE"].sum()

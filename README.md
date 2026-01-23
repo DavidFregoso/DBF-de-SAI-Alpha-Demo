@@ -13,6 +13,7 @@ La app mostrará la URL local y la URL LAN para compartir el demo.
 
 ### Troubleshooting
 - Si faltan datos, ejecuta `python generate_dbfs.py` para regenerar DBFs.
+- Si cambias alias/ETL, regenera staging y vuelve a ejecutar la demo para refrescar `data/dbf`.
 - Si hay errores de dependencias, elimina `.venv` y vuelve a correr `run_demo.bat`.
 
 ## Mock Dataset (4 años, determinista)

@@ -32,7 +32,7 @@ def coalesce_columns(
         df[target] = pd.NA
     for candidate in candidates:
         if candidate in df.columns:
-            df[target] = df[target].combine_first(df[candidate])
+            df[target] = df[target].where(df[target].notna(), df[candidate])
     if default is not None:
         df[target] = df[target].fillna(default)
     if drop_candidates:

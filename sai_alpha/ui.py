@@ -82,6 +82,15 @@ def get_schema_messages() -> list[str]:
     return list(st.session_state.get("schema_messages", []))
 
 
+def notify_once(key: str, message: str, level: str = "warning") -> None:
+    seen = st.session_state.setdefault("notifications_seen", set())
+    if key in seen:
+        return
+    seen.add(key)
+    notifier = getattr(st, level, st.info)
+    notifier(message)
+
+
 def validate_bundle(bundle: DataBundle) -> DataBundle:
     ventas = bundle.ventas.copy()
     productos = bundle.productos.copy()
@@ -157,8 +166,19 @@ def apply_theme() -> None:
     primary = st.session_state.get("theme_primary", "#0f5132")
     accent = st.session_state.get("theme_accent", "#198754")
     density = st.session_state.get("table_density", "Confortable")
+    theme_mode = st.session_state.get("theme_mode", "Claro")
+    st.session_state["sidebar_header_rendered"] = False
     row_height = {"Compacta": 26, "Confortable": 34, "Amplia": 42}.get(density, 34)
     st.session_state["row_height"] = row_height
+
+    is_dark = theme_mode == "Oscuro"
+    app_bg = "#0f1116" if is_dark else "#ffffff"
+    sidebar_bg = "#11151c" if is_dark else "#f8f9fa"
+    card_bg = "#1c2129" if is_dark else "#f8f9fa"
+    border_color = "#2c3340" if is_dark else "#e9ecef"
+    text_color = "#f8f9fa" if is_dark else "#212529"
+    subtitle_color = "#adb5bd" if is_dark else "#6c757d"
+    title_color = accent if is_dark else primary
 
     st.markdown(
         f"""
@@ -173,11 +193,11 @@ def apply_theme() -> None:
             .app-header {{
                 font-weight: 700;
                 font-size: 1.4rem;
-                color: {primary};
+                color: {title_color};
                 margin-bottom: 0.25rem;
             }}
             .app-subtitle {{
-                color: #6c757d;
+                color: {subtitle_color};
                 margin-top: 0;
             }}
             .top-header {{
@@ -187,17 +207,17 @@ def apply_theme() -> None:
                 gap: 1rem;
                 padding: 0.75rem 1rem;
                 border-radius: 12px;
-                background: #f8f9fa;
-                border: 1px solid #e9ecef;
+                background: {card_bg};
+                border: 1px solid {border_color};
                 margin-bottom: 1.5rem;
             }}
             .top-header-title {{
                 font-weight: 700;
                 font-size: 1.3rem;
-                color: {primary};
+                color: {title_color};
             }}
             .top-header-sub {{
-                color: #6c757d;
+                color: {subtitle_color};
                 font-size: 0.9rem;
                 margin-top: 0.15rem;
             }}
@@ -208,12 +228,12 @@ def apply_theme() -> None:
                 justify-content: flex-end;
             }}
             .status-pill {{
-                background: #ffffff;
-                border: 1px solid #dee2e6;
+                background: {app_bg};
+                border: 1px solid {border_color};
                 border-radius: 999px;
                 padding: 0.35rem 0.75rem;
                 font-size: 0.8rem;
-                color: #495057;
+                color: {text_color};
                 box-shadow: 0 1px 2px rgba(0,0,0,0.04);
             }}
             [data-testid="stMetricValue"] {{
@@ -231,13 +251,31 @@ def apply_theme() -> None:
             .sidebar-title {{
                 font-weight: 700;
                 font-size: 1.05rem;
-                color: {primary};
+                color: {title_color};
                 margin-bottom: 0.1rem;
             }}
             .sidebar-subtitle {{
-                color: #6c757d;
+                color: {subtitle_color};
                 font-size: 0.85rem;
                 margin-top: 0;
+            }}
+            .sidebar-theme {{
+                color: {text_color};
+                font-size: 0.8rem;
+                margin-top: 0.35rem;
+                margin-bottom: 0.1rem;
+            }}
+            .stApp {{
+                background-color: {app_bg};
+                color: {text_color};
+            }}
+            [data-testid="stSidebar"] {{
+                background-color: {sidebar_bg};
+            }}
+            [data-testid="stSidebar"] .stMarkdown,
+            [data-testid="stSidebar"] label,
+            [data-testid="stSidebar"] .stCaption {{
+                color: {text_color};
             }}
             [data-testid="stSidebarNav"],
             [data-testid="stSidebarNavItems"],
@@ -265,6 +303,7 @@ def render_page_nav(current_page: str) -> None:
         current_index = pages.index(current_page)
     except ValueError:
         current_index = 0
+    render_sidebar_header()
     selection = st.sidebar.selectbox(
         "Ir a página",
         pages,
@@ -281,9 +320,35 @@ def init_session_state() -> None:
     init_state_once(load_sales())
 
 
+def render_sidebar_header() -> None:
+    if st.session_state.get("sidebar_header_rendered"):
+        return
+    st.sidebar.markdown("<div class='sidebar-title'>Demo Surtidora de Abarrotes</div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div class='sidebar-subtitle'>Dashboard Ejecutivo</div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div class='sidebar-theme'>Tema</div>", unsafe_allow_html=True)
+    st.sidebar.radio(
+        "Tema",
+        ["Claro", "Oscuro"],
+        key="theme_mode",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    st.sidebar.divider()
+    st.session_state["sidebar_header_rendered"] = True
+
+
+def reset_theme_defaults() -> None:
+    st.session_state["theme_primary"] = "#0f5132"
+    st.session_state["theme_accent"] = "#198754"
+    st.session_state["table_density"] = "Confortable"
+    st.session_state["theme_mode"] = "Claro"
+
+
 def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -> object:
     from sai_alpha.filters import AdvancedFilterContext, build_advanced_filters, build_filter_state, build_global_filters
 
+    init_session_state()
+    render_sidebar_header()
     with st.sidebar.expander("Filtros globales", expanded=True):
         global_filters = build_global_filters(ventas)
 

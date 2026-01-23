@@ -4,7 +4,7 @@ import streamlit as st
 
 from sai_alpha.formatting import fmt_int
 from sai_alpha.schema import require_columns
-from sai_alpha.ui import get_schema_messages, render_page_header
+from sai_alpha.ui import get_schema_messages, render_page_header, reset_theme_defaults
 
 
 def _render_dataset_card(title: str, df, required: set[str]) -> None:
@@ -31,6 +31,10 @@ def render(bundle, ventas) -> None:
         st.color_picker("Color primario", key="theme_primary")
     with col2:
         st.color_picker("Color de acento", key="theme_accent")
+
+    if st.button("Restaurar defaults", key="reset_theme_defaults"):
+        reset_theme_defaults()
+        st.success("Se restauraron los valores de apariencia por defecto.")
 
     st.selectbox(
         "Densidad de tablas",

@@ -4,12 +4,11 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from sai_alpha import normalize as normalize_utils
 from sai_alpha.etl import normalize_columns, resolve_dbf_dir
 from sai_alpha.formatting import fmt_int, fmt_money, fmt_num, safe_metric
 from sai_alpha.filters import FilterState
-from sai_alpha.schema import resolve_column
-from sai_alpha.ui import export_buttons, plotly_colors, render_page_header, table_height
+from sai_alpha.schema import ensure_inventory_columns, resolve_column
+from sai_alpha.ui import export_buttons, notify_once, plotly_colors, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
@@ -20,8 +19,15 @@ def render(filters: FilterState, aggregates: dict) -> None:
         st.warning("No hay registros con los filtros actuales.")
         return
 
+    period_days = max(1, (filters.end_date - filters.start_date).days + 1)
+    sales_units = pd.DataFrame()
+    qty_col = resolve_column(filtered, ["QTY", "UNITS", "CANTIDAD", "PIEZAS", "UNITS_SOLD", "SOLD_UNITS"])
+    if "PRODUCT_ID" in filtered.columns and qty_col:
+        sales_units = filtered.groupby("PRODUCT_ID").agg(units=(qty_col, "sum")).reset_index()
+
     inventory_source = resolve_dbf_dir() / "productos.dbf"
     inventory = normalize_columns(aggregates.get("inventory_summary", pd.DataFrame()), "productos", inventory_source)
+    inventory, warnings = ensure_inventory_columns(inventory, period_days=period_days, sales_units=sales_units)
     inventory_available = not inventory.empty
     if not inventory_available:
         missing = aggregates.get("inventory_missing", [])
@@ -33,25 +39,8 @@ def render(filters: FilterState, aggregates: dict) -> None:
             st.info("No hay inventario disponible para esta sección.")
 
     if inventory_available:
-        inventory = normalize_utils.ensure_metric(
-            inventory,
-            "units",
-            ["units", "QTY", "UNITS", "CANTIDAD", "PIEZAS", "UNITS_SOLD", "SOLD_UNITS"],
-            default=0,
-        )
-        if inventory["units"].sum() == 0 and "PRODUCT_ID" in filtered.columns:
-            qty_col = resolve_column(
-                filtered,
-                ["QTY", "UNITS", "CANTIDAD", "PIEZAS", "UNITS_SOLD", "SOLD_UNITS"],
-            )
-            if qty_col:
-                sales_units = filtered.groupby("PRODUCT_ID").agg(units=(qty_col, "sum")).reset_index()
-                inventory = inventory.merge(sales_units, on="PRODUCT_ID", how="left", suffixes=("", "_SALES"))
-                inventory["units"] = inventory["units"].where(
-                    inventory["units"].ne(0),
-                    inventory["units_SALES"].fillna(0),
-                )
-                inventory = inventory.drop(columns=["units_SALES"])
+        for warning in warnings:
+            notify_once("inventory_warning_cost_price", warning, level="warning")
 
         rotation = 0.0
         stock_total = inventory["STOCK_QTY"].sum()
@@ -69,6 +58,45 @@ def render(filters: FilterState, aggregates: dict) -> None:
             safe_metric("Rotación", fmt_num(rotation))
         with col3:
             safe_metric("Valor inventario", fmt_money(inventory_value, "MXN"))
+
+        inventory["rotation"] = inventory["units"] / inventory["STOCK_QTY"].replace(0, pd.NA)
+        inventory["rotation"] = inventory["rotation"].fillna(0)
+        inventory["margin"] = inventory["PRICE_MXN"].fillna(0) - inventory["COST_MXN"].fillna(0)
+
+        st.divider()
+        st.markdown("### Top productos por rotación")
+        top_rotation = inventory.sort_values("rotation", ascending=False).head(10).copy()
+        top_rotation["rotation_fmt"] = top_rotation["rotation"].map(fmt_num)
+        top_rotation["units_fmt"] = top_rotation["units"].map(fmt_int)
+        top_rotation["stock_fmt"] = top_rotation["STOCK_QTY"].map(fmt_int)
+        st.dataframe(
+            top_rotation[["PRODUCT_NAME", "rotation_fmt", "units_fmt", "stock_fmt"]],
+            use_container_width=True,
+            height=table_height(10),
+            column_config={
+                "PRODUCT_NAME": "Producto",
+                "rotation_fmt": st.column_config.TextColumn("Rotación"),
+                "units_fmt": st.column_config.TextColumn("Unidades"),
+                "stock_fmt": st.column_config.TextColumn("Stock"),
+            },
+        )
+
+        st.markdown("### Top productos por margen")
+        top_margin = inventory.sort_values("margin", ascending=False).head(10).copy()
+        top_margin["margin_fmt"] = top_margin["margin"].map(lambda value: fmt_money(value, "MXN"))
+        top_margin["price_fmt"] = top_margin["PRICE_MXN"].map(lambda value: fmt_money(value, "MXN"))
+        top_margin["cost_fmt"] = top_margin["COST_MXN"].map(lambda value: fmt_money(value, "MXN"))
+        st.dataframe(
+            top_margin[["PRODUCT_NAME", "margin_fmt", "price_fmt", "cost_fmt"]],
+            use_container_width=True,
+            height=table_height(10),
+            column_config={
+                "PRODUCT_NAME": "Producto",
+                "margin_fmt": st.column_config.TextColumn("Margen unitario"),
+                "price_fmt": st.column_config.TextColumn("Precio"),
+                "cost_fmt": st.column_config.TextColumn("Costo"),
+            },
+        )
 
     st.divider()
     st.markdown("### Pareto Top 10 productos")
@@ -122,7 +150,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         st.info("No hay inventario suficiente para mostrar el stock.")
 
     st.divider()
-    st.markdown("### Productos por agotarse")
+    st.markdown("### Alertas: por agotarse")
     if inventory_available:
         if "PRODUCT_NAME" not in inventory.columns:
             st.error(
@@ -132,24 +160,46 @@ def render(filters: FilterState, aggregates: dict) -> None:
             st.write("Fuente DBF:", str(inventory_source))
             st.write("Columnas disponibles:", list(inventory.columns))
             return
-        if "MIN_STOCK" not in inventory.columns:
-            inventory["MIN_STOCK"] = inventory["STOCK_QTY"].fillna(0) * 0.2
         low_stock = inventory[inventory["STOCK_QTY"] <= inventory["MIN_STOCK"]].copy()
         if low_stock.empty:
             st.info("No hay productos por agotarse con los datos actuales.")
         else:
             low_stock["stock_fmt"] = low_stock["STOCK_QTY"].map(fmt_int)
+            low_stock["min_fmt"] = low_stock["MIN_STOCK"].map(fmt_int)
             st.dataframe(
-                low_stock[["PRODUCT_NAME", "stock_fmt"]].head(15),
+                low_stock[["PRODUCT_NAME", "stock_fmt", "min_fmt"]].head(15),
                 use_container_width=True,
                 height=table_height(15),
                 column_config={
                     "PRODUCT_NAME": "Producto",
                     "stock_fmt": st.column_config.TextColumn("Existencia"),
+                    "min_fmt": st.column_config.TextColumn("Mínimo"),
                 },
             )
     else:
         st.info("No hay inventario suficiente para evaluar productos por agotarse.")
+
+    st.divider()
+    st.markdown("### Alertas: sobre-stock")
+    if inventory_available:
+        over_stock = inventory[inventory["STOCK_QTY"] >= inventory["MAX_STOCK"]].copy()
+        if over_stock.empty:
+            st.info("No hay productos sobre-stock con los datos actuales.")
+        else:
+            over_stock["stock_fmt"] = over_stock["STOCK_QTY"].map(fmt_int)
+            over_stock["max_fmt"] = over_stock["MAX_STOCK"].map(fmt_int)
+            st.dataframe(
+                over_stock[["PRODUCT_NAME", "stock_fmt", "max_fmt"]].head(15),
+                use_container_width=True,
+                height=table_height(15),
+                column_config={
+                    "PRODUCT_NAME": "Producto",
+                    "stock_fmt": st.column_config.TextColumn("Existencia"),
+                    "max_fmt": st.column_config.TextColumn("Máximo"),
+                },
+            )
+    else:
+        st.info("No hay inventario suficiente para evaluar sobre-stock.")
 
     st.divider()
     st.markdown("### Exportar")

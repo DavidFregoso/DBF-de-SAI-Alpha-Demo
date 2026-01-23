@@ -86,6 +86,8 @@ def init_state_once(df_sales: pd.DataFrame) -> None:
         "theme_primary": "#0f5132",
         "theme_accent": "#198754",
         "table_density": "Confortable",
+        "theme_mode": "Claro",
+        "default_window_days": 90,
         "period_mode": "Último periodo disponible",
         "range_mode": "Mes",
         "granularity": "Auto",

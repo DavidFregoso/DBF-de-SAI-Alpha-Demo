@@ -7,6 +7,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from sai_alpha.formatting import fmt_int, fmt_money, fmt_num
+from sai_alpha.schema import ensure_inventory_columns, resolve_column
 from sai_alpha.ui import (
     apply_theme,
     export_buttons,
@@ -17,6 +19,7 @@ from sai_alpha.ui import (
     load_orders,
     load_sales,
     normalize_currency,
+    notify_once,
     plotly_colors,
     render_page_nav,
     render_sidebar_filters,
@@ -49,14 +52,20 @@ if filtered.empty:
     st.stop()
 
 period_days = max(1, (filters.end_date - filters.start_date).days + 1)
-product_sales = (
-    filtered.groupby(["PRODUCT_ID", "PRODUCT_NAME", "BRAND", "CATEGORY"])
-    .agg(
-        units=("QTY", "sum"),
-        revenue=(filters.revenue_column, "sum"),
+qty_col = resolve_column(filtered, ["QTY", "UNITS", "CANTIDAD", "PIEZAS", "UNITS_SOLD", "SOLD_UNITS"])
+if qty_col:
+    product_sales = (
+        filtered.groupby(["PRODUCT_ID", "PRODUCT_NAME", "BRAND", "CATEGORY"])
+        .agg(
+            units=(qty_col, "sum"),
+            revenue=(filters.revenue_column, "sum"),
+        )
+        .reset_index()
     )
-    .reset_index()
-)
+else:
+    product_sales = pd.DataFrame(
+        columns=["PRODUCT_ID", "PRODUCT_NAME", "BRAND", "CATEGORY", "units", "revenue"]
+    )
 product_sales["avg_daily_units"] = product_sales["units"] / period_days
 
 inventory = bundle.productos.copy()
@@ -65,10 +74,14 @@ if "PRODUCT_NAME" in inventory.columns and "PRODUCT_NAME" in product_sales.colum
     merge_keys.append("PRODUCT_NAME")
 inventory = inventory.merge(product_sales, on=merge_keys, how="left")
 inventory["avg_daily_units"] = inventory["avg_daily_units"].fillna(0.0)
-inventory["DAYS_INVENTORY"] = inventory.apply(
-    lambda row: row["STOCK_QTY"] / row["avg_daily_units"] if row["avg_daily_units"] > 0 else None,
-    axis=1,
+inventory, warnings = ensure_inventory_columns(
+    inventory,
+    period_days=period_days,
+    sales_units=product_sales[["PRODUCT_ID", "units"]].copy(),
 )
+if not inventory.empty:
+    for warning in warnings:
+        notify_once("inventory_warning_cost_price", warning, level="warning")
 
 low_threshold = st.slider("Días de inventario bajo", min_value=3, max_value=30, value=10)
 high_threshold = st.slider("Días de inventario alto", min_value=30, max_value=180, value=90)
@@ -87,7 +100,45 @@ col2.metric("SKU críticos", f"{low_stock['PRODUCT_ID'].nunique():,}")
 col3.metric("SKU sobre-stock", f"{high_stock['PRODUCT_ID'].nunique():,}")
 col4.metric("Días promedio", f"{inventory['DAYS_INVENTORY'].dropna().mean():.2f}")
 
-st.markdown("### Productos por agotarse")
+inventory["rotation"] = inventory["units"] / inventory["STOCK_QTY"].replace(0, pd.NA)
+inventory["rotation"] = inventory["rotation"].fillna(0)
+inventory["margin"] = inventory["PRICE_MXN"].fillna(0) - inventory["COST_MXN"].fillna(0)
+
+st.markdown("### Top productos por rotación")
+top_rotation = inventory.sort_values("rotation", ascending=False).head(10).copy()
+top_rotation["rotation_fmt"] = top_rotation["rotation"].map(fmt_num)
+top_rotation["units_fmt"] = top_rotation["units"].map(fmt_int)
+top_rotation["stock_fmt"] = top_rotation["STOCK_QTY"].map(fmt_int)
+st.dataframe(
+    top_rotation[["PRODUCT_NAME", "rotation_fmt", "units_fmt", "stock_fmt"]],
+    use_container_width=True,
+    height=table_height(10),
+    column_config={
+        "PRODUCT_NAME": "Producto",
+        "rotation_fmt": format_number_column("Rotación"),
+        "units_fmt": format_integer_column("Unidades"),
+        "stock_fmt": format_integer_column("Stock"),
+    },
+)
+
+st.markdown("### Top productos por margen")
+top_margin = inventory.sort_values("margin", ascending=False).head(10).copy()
+top_margin["margin_fmt"] = top_margin["margin"].map(lambda value: fmt_money(value, "MXN"))
+top_margin["price_fmt"] = top_margin["PRICE_MXN"].map(lambda value: fmt_money(value, "MXN"))
+top_margin["cost_fmt"] = top_margin["COST_MXN"].map(lambda value: fmt_money(value, "MXN"))
+st.dataframe(
+    top_margin[["PRODUCT_NAME", "margin_fmt", "price_fmt", "cost_fmt"]],
+    use_container_width=True,
+    height=table_height(10),
+    column_config={
+        "PRODUCT_NAME": "Producto",
+        "margin_fmt": format_currency_column("Margen unitario"),
+        "price_fmt": format_currency_column("Precio"),
+        "cost_fmt": format_currency_column("Costo"),
+    },
+)
+
+st.markdown("### Alertas: por agotarse")
 st.dataframe(
     low_stock[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]],
     use_container_width=True,
@@ -101,7 +152,7 @@ st.dataframe(
     },
 )
 
-st.markdown("### Productos sobre-stock")
+st.markdown("### Alertas: sobre-stock")
 st.dataframe(
     high_stock[["PRODUCT_NAME", "BRAND", "CATEGORY", "STOCK_QTY", "DAYS_INVENTORY"]],
     use_container_width=True,

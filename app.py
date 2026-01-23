@@ -36,6 +36,7 @@ def build_sidebar(
     with st.sidebar.expander("Filtros globales", expanded=True):
         global_filters = build_global_filters(ventas)
 
+    expander = st.sidebar.expander("Filtros de esta sección", expanded=False)
     advanced_context = AdvancedFilterContext(
         brands=selected in {"Resumen Ejecutivo", "Ventas", "Clientes", "Vendedores", "Productos"},
         categories=selected in {"Resumen Ejecutivo", "Ventas", "Productos"},
@@ -49,7 +50,7 @@ def build_sidebar(
         order_types=selected in {"Resumen Ejecutivo", "Ventas", "Clientes", "Productos", "Pedidos por Surtir"},
         order_statuses=selected == "Pedidos por Surtir",
     )
-    advanced_filters = build_advanced_filters(ventas, pedidos_df, advanced_context)
+    advanced_filters = build_advanced_filters(ventas, pedidos_df, advanced_context, expander)
 
     bundle = st.session_state.setdefault("data_bundle", load_bundle())
     filters = build_filter_state(ventas, pedidos_df, bundle, global_filters, advanced_filters)
@@ -71,11 +72,11 @@ def run_app() -> None:
     ventas = st.session_state.setdefault("sales_data", load_sales())
     pedidos_df = st.session_state.setdefault("orders_data", load_orders())
 
-    if ventas.empty:
+    if ventas is None or ventas.empty:
         dbf_dir = resolve_dbf_dir()
-        st.error("No hay datos disponibles. Ejecuta generate_dbfs.py para crear data DBF.")
+        st.error("No se cargaron ventas. Revisa DBF_DIR o mock data.")
         st.write("Ruta actual:", str(dbf_dir))
-        return
+        st.stop()
 
     init_state_once(ventas)
     apply_theme()
@@ -100,8 +101,14 @@ def run_app() -> None:
     elif selected == "Vendedores":
         vendedores.render(filters)
     elif selected == "Productos":
+        if bundle.productos is None or bundle.productos.empty:
+            st.warning("Productos no cargados; esta sección se omitirá.")
+            return
         productos.render(filters, bundle, ventas)
     elif selected == "Pedidos por Surtir":
+        if pedidos_df is None or pedidos_df.empty:
+            st.warning("Pedidos no cargados; esta sección se omitirá.")
+            return
         pedidos.render(filters, bundle, ventas)
     elif selected == "Configuración":
         configuracion.render(bundle, ventas)

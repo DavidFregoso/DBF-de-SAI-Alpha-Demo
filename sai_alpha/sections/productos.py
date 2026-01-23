@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from sai_alpha import normalize as normalize_utils
 from sai_alpha.etl import normalize_columns, resolve_dbf_dir
 from sai_alpha.formatting import fmt_int, fmt_money, fmt_num, safe_metric
 from sai_alpha.filters import FilterState
@@ -32,9 +33,32 @@ def render(filters: FilterState, aggregates: dict) -> None:
             st.info("No hay inventario disponible para esta sección.")
 
     if inventory_available:
+        inventory = normalize_utils.ensure_metric(
+            inventory,
+            "units",
+            ["units", "QTY", "UNITS", "CANTIDAD", "PIEZAS", "UNITS_SOLD", "SOLD_UNITS"],
+            default=0,
+        )
+        if inventory["units"].sum() == 0 and "PRODUCT_ID" in filtered.columns:
+            qty_col = resolve_column(
+                filtered,
+                ["QTY", "UNITS", "CANTIDAD", "PIEZAS", "UNITS_SOLD", "SOLD_UNITS"],
+            )
+            if qty_col:
+                sales_units = filtered.groupby("PRODUCT_ID").agg(units=(qty_col, "sum")).reset_index()
+                inventory = inventory.merge(sales_units, on="PRODUCT_ID", how="left", suffixes=("", "_SALES"))
+                inventory["units"] = inventory["units"].where(
+                    inventory["units"].ne(0),
+                    inventory["units_SALES"].fillna(0),
+                )
+                inventory = inventory.drop(columns=["units_SALES"])
+
         rotation = 0.0
-        if inventory["STOCK_QTY"].sum() > 0:
-            rotation = inventory["units"].sum() / inventory["STOCK_QTY"].sum()
+        stock_total = inventory["STOCK_QTY"].sum()
+        if stock_total > 0:
+            rotation = inventory["units"].sum() / stock_total
+        else:
+            st.info("La rotación se muestra en 0 porque no hay stock disponible en el periodo.")
         inventory_value = inventory["inventory_value"].sum()
 
         st.markdown("### KPIs clave")

@@ -8,8 +8,10 @@ import pandas as pd
 import plotly.io as pio
 import streamlit as st
 
+from sai_alpha import normalize as normalize_utils
 from sai_alpha.etl import DataBundle, enrich_pedidos, enrich_sales, load_data, resolve_dbf_dir
 from sai_alpha.formatting import fmt_int, fmt_money
+from sai_alpha.schema import DEFAULT_TEXT
 
 DATA_DIR = resolve_dbf_dir()
 EXPORT_DIR = Path("data/exports")
@@ -26,7 +28,8 @@ PAGE_ROUTES = {
 
 @st.cache_data(show_spinner=False)
 def load_bundle() -> DataBundle:
-    return load_data(DATA_DIR)
+    bundle = load_data(DATA_DIR)
+    return validate_bundle(bundle)
 
 
 @st.cache_data(show_spinner=False)
@@ -66,6 +69,87 @@ REQUIRED_SALES_COLUMNS = {
 
 def validate_sales_schema(ventas: pd.DataFrame) -> list[str]:
     return sorted(REQUIRED_SALES_COLUMNS - set(ventas.columns))
+
+
+def _warn_once(key: str, message: str) -> None:
+    if st.session_state.get(key):
+        return
+    st.warning(message)
+    st.session_state[key] = True
+
+
+def validate_bundle(bundle: DataBundle) -> DataBundle:
+    ventas = bundle.ventas.copy()
+    productos = bundle.productos.copy()
+    pedidos = bundle.pedidos.copy() if bundle.pedidos is not None else None
+
+    ventas_required = {"SALE_DATE", "PRODUCT_ID", "PRODUCT_NAME", "QTY", "REVENUE_MXN", "REVENUE_USD"}
+    productos_required = {"PRODUCT_ID", "PRODUCT_NAME", "STOCK_QTY", "COST_MXN", "PRICE_MXN"}
+    pedidos_required = {"ORDER_DATE", "PRODUCT_ID", "QTY_PENDING", "PRICE_MXN", "STATUS"}
+
+    ventas_missing = sorted(ventas_required - set(ventas.columns))
+    if ventas_missing:
+        _warn_once(
+            "ventas_missing_columns",
+            "Se agregaron columnas faltantes en ventas.dbf: " + ", ".join(ventas_missing),
+        )
+    ventas = normalize_utils.ensure_columns(
+        ventas,
+        {
+            "SALE_DATE": pd.NaT,
+            "PRODUCT_ID": "",
+            "PRODUCT_NAME": DEFAULT_TEXT,
+            "QTY": 0,
+            "REVENUE_MXN": 0,
+            "REVENUE_USD": 0,
+        },
+    )
+
+    productos_missing = sorted(productos_required - set(productos.columns))
+    if productos_missing:
+        _warn_once(
+            "productos_missing_columns",
+            "Se agregaron columnas faltantes en productos.dbf: " + ", ".join(productos_missing),
+        )
+    productos = normalize_utils.ensure_columns(
+        productos,
+        {
+            "PRODUCT_ID": "",
+            "PRODUCT_NAME": DEFAULT_TEXT,
+            "STOCK_QTY": 0,
+            "COST_MXN": 0,
+            "PRICE_MXN": 0,
+        },
+    )
+
+    if pedidos is not None:
+        pedidos_missing = sorted(pedidos_required - set(pedidos.columns))
+        if pedidos_missing:
+            _warn_once(
+                "pedidos_missing_columns",
+                "Se agregaron columnas faltantes en pedidos.dbf: " + ", ".join(pedidos_missing),
+            )
+        pedidos = normalize_utils.ensure_columns(
+            pedidos,
+            {
+                "ORDER_DATE": pd.NaT,
+                "PRODUCT_ID": "",
+                "QTY_PENDING": 0,
+                "PRICE_MXN": 0,
+                "STATUS": "Pendiente",
+            },
+        )
+
+    return DataBundle(
+        ventas=ventas,
+        productos=productos,
+        clientes=bundle.clientes,
+        vendedores=bundle.vendedores,
+        tipo_cambio=bundle.tipo_cambio,
+        facturas=bundle.facturas,
+        notas_credito=bundle.notas_credito,
+        pedidos=pedidos,
+    )
 
 
 def apply_theme() -> None:
@@ -346,6 +430,8 @@ def build_time_series(df: pd.DataFrame, date_col: str, value_col: str, granulari
         return df.groupby(pd.Grouper(key=date_col, freq="W-MON"))[value_col].sum().reset_index()
     if granularity == "Mensual":
         return df.groupby(pd.Grouper(key=date_col, freq="ME"))[value_col].sum().reset_index()
+    if granularity == "Anual":
+        return df.groupby(pd.Grouper(key=date_col, freq="Y"))[value_col].sum().reset_index()
     return df.groupby(pd.Grouper(key=date_col, freq="Y"))[value_col].sum().reset_index()
 
 

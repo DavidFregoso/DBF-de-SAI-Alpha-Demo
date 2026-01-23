@@ -185,16 +185,26 @@ def build_aggregates(
         )
         if inventory_ok:
             period_days = max(1, (end_date - start_date).days + 1)
-            if "PRODUCT_ID" in sales.columns:
-                sales_summary = sales.groupby("PRODUCT_ID").agg(units=("QTY", "sum")).reset_index()
+            sales_summary = None
+            qty_col = resolve_column(
+                sales,
+                ["QTY", "UNITS", "CANTIDAD", "PIEZAS", "UNITS_SOLD", "SOLD_UNITS"],
+            )
+            if "PRODUCT_ID" in sales.columns and qty_col:
+                sales_summary = sales.groupby("PRODUCT_ID").agg(units=(qty_col, "sum")).reset_index()
                 sales_summary["avg_daily_units"] = sales_summary["units"] / period_days
                 inventory = inventory.merge(sales_summary, on="PRODUCT_ID", how="left")
-                inventory["units"] = inventory["units"].fillna(0)
-                inventory["avg_daily_units"] = inventory["avg_daily_units"].fillna(0)
-            else:
-                inventory["units"] = 0
-                inventory["avg_daily_units"] = 0
+            inventory = normalize_utils.ensure_metric(
+                inventory,
+                "units",
+                ["units", "UNITS", "CANTIDAD", "PIEZAS", "UNITS_SOLD", "SOLD_UNITS"],
+                default=0,
+            )
+            if "avg_daily_units" not in inventory.columns:
+                inventory["avg_daily_units"] = inventory["units"] / period_days
+            inventory["avg_daily_units"] = pd.to_numeric(inventory["avg_daily_units"], errors="coerce").fillna(0)
             inventory["DAYS_INVENTORY"] = inventory["STOCK_QTY"] / inventory["avg_daily_units"].replace(0, pd.NA)
+            inventory["DAYS_INVENTORY"] = inventory["DAYS_INVENTORY"].fillna(0)
             inventory["inventory_value"] = inventory["STOCK_QTY"].fillna(0) * inventory["COST_MXN"].fillna(0)
         else:
             inventory = pd.DataFrame(columns=list(inventory.columns))
@@ -241,23 +251,72 @@ def build_aggregates(
                     "UNIT_PRICE_MXN",
                 ],
             )
-            rate_col = resolve_column(
-                pending,
-                ["FX_RATE", "USD_MXN_RATE", "USD_MXN", "EXCH_RATE", "EXCHANGE_RATE", "TC", "TIPO_CAMBIO"],
-            )
-            if "PRICE_USD" in pending.columns and rate_col:
-                usd_prices = pd.to_numeric(pending["PRICE_USD"], errors="coerce")
-                rates = pd.to_numeric(pending[rate_col], errors="coerce")
-                pending["PRICE_MXN"] = pending["PRICE_MXN"].where(
-                    pending["PRICE_MXN"].notna(),
-                    usd_prices * rates,
-                )
-            pending["PRICE_MXN"] = pd.to_numeric(pending["PRICE_MXN"], errors="coerce").fillna(0)
+            pending["PRICE_MXN"] = pd.to_numeric(pending["PRICE_MXN"], errors="coerce")
             pending["QTY_PENDING"] = pd.to_numeric(pending["QTY_PENDING"], errors="coerce").fillna(0)
+            warnings: list[str] = []
+
+            def _fill_price(series: pd.Series) -> None:
+                mask = pending["PRICE_MXN"].isna() | pending["PRICE_MXN"].eq(0)
+                pending.loc[mask, "PRICE_MXN"] = series.loc[mask]
+
+            if "PRICE_USD" in pending.columns:
+                usd_prices = pd.to_numeric(pending["PRICE_USD"], errors="coerce")
+                rate_col = resolve_column(
+                    pending,
+                    ["FX_RATE", "USD_MXN_RATE", "USD_MXN", "EXCH_RATE", "EXCHANGE_RATE", "TC", "TIPO_CAMBIO"],
+                )
+                if rate_col:
+                    rates = pd.to_numeric(pending[rate_col], errors="coerce")
+                else:
+                    sales_rate_col = resolve_column(
+                        sales,
+                        ["USD_MXN_RATE", "FX_RATE", "USD_MXN", "EXCH_RATE", "EXCHANGE_RATE", "TC", "TIPO_CAMBIO"],
+                    )
+                    if sales_rate_col:
+                        sales_rates = pd.to_numeric(sales[sales_rate_col], errors="coerce").dropna()
+                        fx_rate = float(sales_rates.mean()) if not sales_rates.empty else None
+                    else:
+                        fx_rate = None
+                    if fx_rate is None:
+                        fx_rate = 17.0
+                        warnings.append(
+                            "No se encontró tipo de cambio para PRICE_USD. Se usó 17.0 MXN/USD."
+                        )
+                    rates = pd.Series([fx_rate] * len(pending), index=pending.index)
+                _fill_price(usd_prices * rates)
+
+            if productos_filtrados is not None and not productos_filtrados.empty:
+                product_prices = canonicalize_products(productos_filtrados)[
+                    ["PRODUCT_ID", "SKU", "PRICE_MXN", "COST_MXN"]
+                ].copy()
+                if "PRODUCT_ID" in pending.columns:
+                    pending = pending.merge(product_prices, on="PRODUCT_ID", how="left", suffixes=("", "_PROD"))
+                    if "PRICE_MXN_PROD" in pending.columns:
+                        _fill_price(pending["PRICE_MXN_PROD"])
+                    cost_col = "COST_MXN_PROD" if "COST_MXN_PROD" in pending.columns else "COST_MXN"
+                    if cost_col in pending.columns:
+                        _fill_price(pending[cost_col])
+                    pending = pending.drop(
+                        columns=[col for col in ["PRICE_MXN_PROD", "COST_MXN_PROD"] if col in pending.columns]
+                    )
+                elif "SKU" in pending.columns and "SKU" in product_prices.columns:
+                    pending = pending.merge(product_prices, on="SKU", how="left", suffixes=("", "_PROD"))
+                    if "PRICE_MXN_PROD" in pending.columns:
+                        _fill_price(pending["PRICE_MXN_PROD"])
+                    cost_col = "COST_MXN_PROD" if "COST_MXN_PROD" in pending.columns else "COST_MXN"
+                    if cost_col in pending.columns:
+                        _fill_price(pending[cost_col])
+                    pending = pending.drop(
+                        columns=[col for col in ["PRICE_MXN_PROD", "COST_MXN_PROD"] if col in pending.columns]
+                    )
+
+            pending["PRICE_MXN"] = pd.to_numeric(pending["PRICE_MXN"], errors="coerce").fillna(0)
             if price_missing or pending["PRICE_MXN"].eq(0).all():
-                aggregates["pedidos_warnings"] = [
+                warnings.append(
                     "No se encontró PRICE_MXN en pedidos.dbf. Se aplicó un fallback o se usó 0."
-                ]
+                )
+            if warnings:
+                aggregates["pedidos_warnings"] = warnings
             pending["PENDING_VALUE"] = pending["QTY_PENDING"].fillna(0) * pending["PRICE_MXN"].fillna(0)
             aggregates["pedidos_pending"] = pending
             if "ORDER_DATE" in pending.columns:

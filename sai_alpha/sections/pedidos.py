@@ -6,18 +6,23 @@ import streamlit as st
 
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
-from sai_alpha.ui import export_buttons, plotly_colors, render_page_header, table_height
+from sai_alpha.ui import build_time_series, export_buttons, plotly_colors, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Pedidos por Surtir", subtitle="Backlog y monto pendiente")
+    if filters.granularity == "Semanal":
+        st.caption("Pedidos por surtir (semana seleccionada)")
 
     pending = aggregates.get("pedidos_pending", pd.DataFrame())
     if pending.empty:
         st.warning("No hay pedidos en el rango seleccionado.")
         return
-    for warning in aggregates.get("pedidos_warnings", []):
-        st.warning(warning)
+    warnings = aggregates.get("pedidos_warnings", [])
+    if warnings and not st.session_state.get("pedidos_price_warning_shown"):
+        for warning in warnings:
+            st.warning(warning)
+        st.session_state["pedidos_price_warning_shown"] = True
 
     pending_count = pending["ORDER_ID"].nunique() if "ORDER_ID" in pending.columns else len(pending)
     pending_value = pending["PENDING_VALUE"].sum()
@@ -54,13 +59,19 @@ def render(filters: FilterState, aggregates: dict) -> None:
     )
 
     st.divider()
-    st.markdown("### Tendencia semanal del backlog")
-    weekly = aggregates.get("pedidos_weekly", pd.DataFrame())
-    if weekly.empty:
+    granularity_label = {
+        "Diario": "diaria",
+        "Semanal": "semanal",
+        "Mensual": "mensual",
+        "Anual": "anual",
+    }.get(filters.granularity, "semanal")
+    st.markdown(f"### Tendencia {granularity_label} del backlog")
+    series = build_time_series(pending, "ORDER_DATE", "PENDING_VALUE", filters.granularity)
+    if series.empty:
         st.info("No hay fechas de pedido para construir la tendencia.")
     else:
         fig = px.line(
-            weekly,
+            series,
             x="ORDER_DATE",
             y="PENDING_VALUE",
             markers=True,

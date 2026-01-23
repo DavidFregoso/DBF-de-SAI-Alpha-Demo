@@ -172,12 +172,21 @@ def render(
     )
 
     st.divider()
-    st.markdown("### Pedidos por surtir")
-    pending = aggregates.get("pedidos_pending", pd.DataFrame())
-    if pending.empty:
-        st.info("No hay pedidos pendientes en este periodo.")
+    pending_title = "Pedidos por surtir"
+    show_pending = filters.granularity == "Mensual" or filters.period_mode == "Último periodo disponible"
+    if filters.granularity == "Semanal":
+        pending_title = "Pedidos por surtir (semana seleccionada)"
+        show_pending = True
+
+    st.markdown(f"### {pending_title}")
+    if not show_pending:
+        st.info("Pedidos por surtir se muestra solo en modo mensual o periodo actual.")
     else:
-        pending_value = pending["PENDING_VALUE"].sum()
-        col1, col2 = st.columns(2)
-        col1.metric("Pedidos pendientes", fmt_int(pending["ORDER_ID"].nunique()))
-        col2.metric("Valor pendiente", fmt_money(pending_value, "MXN"))
+        pending = aggregates.get("pedidos_pending", pd.DataFrame())
+        if pending.empty:
+            st.info("No hay pedidos pendientes en este periodo.")
+        else:
+            pending_value = pending["PENDING_VALUE"].sum()
+            col1, col2 = st.columns(2)
+            col1.metric("Pedidos pendientes", fmt_int(pending["ORDER_ID"].nunique()))
+            col2.metric("Valor pendiente", fmt_money(pending_value, "MXN"))

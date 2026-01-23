@@ -54,3 +54,19 @@ def ensure_columns(df: pd.DataFrame, defaults: dict[str, object]) -> pd.DataFram
         if column not in df.columns:
             df[column] = default
     return df
+
+
+def ensure_metric(
+    df: pd.DataFrame,
+    metric_name: str,
+    candidates: Iterable[str],
+    default: float | int = 0,
+) -> pd.DataFrame:
+    df = df.copy()
+    if metric_name not in df.columns:
+        df[metric_name] = pd.NA
+    for candidate in candidates:
+        if candidate in df.columns:
+            df[metric_name] = df[metric_name].where(df[metric_name].notna(), df[candidate])
+    df[metric_name] = pd.to_numeric(df[metric_name], errors="coerce").fillna(default)
+    return df

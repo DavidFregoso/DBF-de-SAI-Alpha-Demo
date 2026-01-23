@@ -149,18 +149,39 @@ def _year_range_from_selection(year: int) -> tuple[date, date]:
 
 def _format_week_label(week: int, year: int) -> str:
     start, end = _week_range_from_selection(year, week)
-    return f"Semana {week} ({start.isoformat()} a {end.isoformat()})"
+    return f"Semana {int(week):02d} ({start.isoformat()} a {end.isoformat()})"
 
 
 def _format_month_label(month: int, year: int) -> str:
-    start, end = _month_range_from_selection(year, month)
-    month_name = calendar.month_name[int(month)]
-    return f"{month_name} ({start.isoformat()} a {end.isoformat()})"
+    month_names = [
+        "",
+        "Enero",
+        "Febrero",
+        "Marzo",
+        "Abril",
+        "Mayo",
+        "Junio",
+        "Julio",
+        "Agosto",
+        "Septiembre",
+        "Octubre",
+        "Noviembre",
+        "Diciembre",
+    ]
+    return f"{month_names[int(month)]} {int(year)}"
 
 
 def _format_year_label(year: int) -> str:
     start, end = _year_range_from_selection(year)
     return f"{year} ({start.isoformat()} a {end.isoformat()})"
+
+
+def _recommended_granularity(days_range: int) -> str:
+    if days_range < 45:
+        return "Semanal"
+    if days_range <= 400:
+        return "Mensual"
+    return "Anual"
 
 
 def _normalize_filter_list(values: list[str] | None) -> tuple[str, ...]:
@@ -237,7 +258,7 @@ def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
 
     granularity_choice = st.sidebar.selectbox(
         "Granularidad",
-        ["Auto", "Diario", "Semanal", "Mensual"],
+        ["Auto", "Diario", "Semanal", "Mensual", "Anual"],
         key="granularity",
     )
 
@@ -303,15 +324,17 @@ def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
             st.session_state["date_end"] = date_end
             start_date, end_date = date_start, date_end
 
+    days_range = max(1, (end_date - start_date).days + 1)
+    recommended = _recommended_granularity(days_range)
     if granularity_choice == "Auto":
-        granularity = {
-            "Semana": "Semanal",
-            "Mes": "Mensual",
-            "Año": "Mensual",
-            "Rango fechas": "Diario",
-        }.get(range_mode, "Semanal")
+        granularity = recommended
     else:
         granularity = granularity_choice
+        if granularity in {"Semanal", "Mensual", "Anual"} and granularity != recommended:
+            st.warning(
+                f"Granularidad ajustada a {recommended.lower()} por el rango seleccionado."
+            )
+            granularity = recommended
 
     st.sidebar.caption(f"Del: {start_date.isoformat()}  Al: {end_date.isoformat()}")
 

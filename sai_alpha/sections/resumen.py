@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
+from sai_alpha.charts import channel_share_donut, revenue_trend, top_categories_bar, weekday_heatmap
 from sai_alpha.formatting import fmt_int, fmt_money, fmt_num, safe_metric
 from sai_alpha.filters import FilterState
 from sai_alpha.schema import require_columns, resolve_column
-from sai_alpha.ui import plotly_colors, render_page_header, table_height
+from sai_alpha.ui import render_page_header, table_height
 
 
 def _inventory_block(inventory: pd.DataFrame, low_stock: pd.DataFrame, over_stock: pd.DataFrame) -> None:
@@ -82,6 +82,7 @@ def render(
     aggregates: dict,
 ) -> None:
     render_page_header("Resumen Ejecutivo")
+    theme_cfg = st.session_state.get("theme_cfg", {})
 
     filtered = filters.sales
     if filtered.empty:
@@ -107,18 +108,57 @@ def render(
 
     st.divider()
     st.markdown("### Tendencia de facturación")
-    series = aggregates.get("ventas_by_period", pd.DataFrame())
-    fig = px.line(
-        series,
-        x="SALE_DATE",
-        y=filters.revenue_column,
-        markers=True,
-        labels={"SALE_DATE": "Periodo", filters.revenue_column: f"Ventas ({filters.currency_label})"},
-        color_discrete_sequence=plotly_colors(),
+    fig = revenue_trend(
+        filtered,
+        "SALE_DATE",
+        filters.revenue_column,
+        filters.currency_label,
+        filters.granularity,
+        theme_cfg,
     )
-    fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-    fig.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Ventas: %{y:,.2f}<extra></extra>")
     st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+    st.markdown("### Top categorías por facturación")
+    if "CATEGORY" in filtered.columns:
+        fig_categories = top_categories_bar(
+            filtered,
+            "CATEGORY",
+            filters.revenue_column,
+            filters.currency_label,
+            theme_cfg,
+        )
+        st.plotly_chart(fig_categories, use_container_width=True)
+    else:
+        st.info("No hay categorías disponibles para mostrar.")
+
+    st.divider()
+    st.markdown("### Participación por canal de venta")
+    if "ORIGEN_VENTA" in filtered.columns:
+        fig_channel = channel_share_donut(
+            filtered,
+            "ORIGEN_VENTA",
+            filters.revenue_column,
+            filters.currency_label,
+            theme_cfg,
+        )
+        st.plotly_chart(fig_channel, use_container_width=True)
+    else:
+        st.info("No hay origen de venta disponible para graficar.")
+
+    st.divider()
+    st.markdown("### Patrón por día de la semana")
+    heatmap = weekday_heatmap(
+        filtered,
+        "SALE_DATE",
+        filters.revenue_column,
+        filters.currency_label,
+        theme_cfg,
+    )
+    if heatmap is None:
+        st.info("No hay suficientes datos para mostrar el mapa de calor.")
+    else:
+        st.plotly_chart(heatmap, use_container_width=True)
 
     st.divider()
     st.markdown("### Top productos y clientes")
@@ -173,7 +213,7 @@ def render(
 
     st.divider()
     pending_title = "Pedidos por surtir"
-    show_pending = filters.granularity == "Mensual" or filters.period_mode == "Último periodo disponible"
+    show_pending = filters.granularity == "Mensual" or filters.period_type == "Último periodo disponible (recomendado)"
     if filters.granularity == "Semanal":
         pending_title = "Pedidos por surtir (semana seleccionada)"
         show_pending = True

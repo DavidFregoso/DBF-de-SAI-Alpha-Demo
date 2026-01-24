@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
+
+import plotly.express as px
 
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
-from sai_alpha.ui import export_buttons, plotly_colors, render_page_header, table_height
+from sai_alpha.ui import export_buttons, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
@@ -75,6 +76,56 @@ def render(filters: FilterState, aggregates: dict) -> None:
         )
 
     st.divider()
+    st.markdown("### Top 15 clientes por facturación")
+    if not client_table.empty:
+        fig_top_clients = px.bar(
+            client_table.head(15),
+            x="CLIENT_NAME",
+            y="revenue",
+            labels={"CLIENT_NAME": "Cliente", "revenue": f"Ventas ({filters.currency_label})"},
+        )
+        fig_top_clients.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_top_clients.update_traces(hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>")
+        fig_top_clients.update_yaxes(tickformat=",.2f")
+        st.plotly_chart(fig_top_clients, use_container_width=True)
+
+    st.divider()
+    st.markdown("### Clientes únicos por periodo")
+    if "SALE_DATE" in filtered.columns and "CLIENT_ID" in filtered.columns:
+        granularity = filters.granularity
+        freq = {"Diario": "D", "Semanal": "W-MON", "Mensual": "ME", "Anual": "Y"}.get(granularity, "W-MON")
+        unique_clients = (
+            filtered.groupby(pd.Grouper(key="SALE_DATE", freq=freq))["CLIENT_ID"]
+            .nunique()
+            .reset_index(name="Clientes")
+        )
+        fig_clients = px.line(
+            unique_clients,
+            x="SALE_DATE",
+            y="Clientes",
+            markers=True,
+            labels={"SALE_DATE": "Periodo", "Clientes": "Clientes únicos"},
+        )
+        fig_clients.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_clients.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Clientes: %{y:,.0f}<extra></extra>")
+        st.plotly_chart(fig_clients, use_container_width=True)
+    else:
+        st.info("No hay fechas o clientes para construir la tendencia.")
+
+    st.divider()
+    st.markdown("### Recomendación / encuesta")
+    if "RECOMM_SOURCE" in filtered.columns:
+        recommend = (
+            filtered.groupby("RECOMM_SOURCE")["CLIENT_ID"].nunique().reset_index(name="Clientes")
+        )
+        fig_recommend = px.pie(recommend, values="Clientes", names="RECOMM_SOURCE", hole=0.5)
+        fig_recommend.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_recommend.update_traces(hovertemplate="%{label}<br>Clientes: %{value:,.0f}<extra></extra>")
+        st.plotly_chart(fig_recommend, use_container_width=True)
+    else:
+        st.info("No hay datos de recomendación disponibles.")
+
+    st.divider()
     st.markdown("### Origen de clientes")
     origin = aggregates.get("clientes_origin", pd.DataFrame())
     if origin.empty:
@@ -84,7 +135,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
             origin,
             x="CLIENT_ORIGIN",
             y="Clientes",
-            color_discrete_sequence=plotly_colors(),
+            labels={"CLIENT_ORIGIN": "Origen", "Clientes": "Clientes"},
         )
         fig_origin.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_origin.update_traces(hovertemplate="%{x}<br>Clientes: %{y:,.0f}<extra></extra>")

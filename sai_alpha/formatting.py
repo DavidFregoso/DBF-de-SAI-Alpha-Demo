@@ -29,9 +29,7 @@ def fmt_money(value: Any, currency: str = "MXN", default: str = DEFAULT_TEXT) ->
     formatted = fmt_num(value, default=default)
     if formatted == default:
         return default
-    currency_label = (currency or "MXN").upper()
-    prefix = "$" if currency_label == "MXN" else currency_label
-    return f"{prefix} {formatted}"
+    return formatted
 
 
 def fmt_int(value: Any, default: str = DEFAULT_TEXT) -> str:
@@ -39,6 +37,20 @@ def fmt_int(value: Any, default: str = DEFAULT_TEXT) -> str:
     if number is None:
         return default
     return f"{int(round(number)):,.0f}"
+
+
+def fmt_units(value: Any, default: str = DEFAULT_TEXT) -> str:
+    number = _to_float(value)
+    if number is None:
+        return default
+    if float(number).is_integer():
+        return f"{int(round(number)):,.0f}"
+    return f"{number:,.2f}"
+
+
+def plotly_hover_money(currency: str = "MXN") -> str:
+    currency_label = (currency or "MXN").upper()
+    return f"%{{y:,.2f}} {currency_label}<extra></extra>"
 
 
 def safe_metric(label: str, value: Any, delta: Any | None = None, help: str | None = None) -> None:

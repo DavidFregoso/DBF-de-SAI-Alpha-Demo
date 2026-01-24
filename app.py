@@ -31,10 +31,9 @@ def build_sidebar(
         label_visibility="visible",
     )
 
-    with st.sidebar.expander("Filtros globales", expanded=True):
-        global_filters = build_global_filters(ventas)
+    st.sidebar.divider()
+    global_filters = build_global_filters(ventas)
 
-    expander = st.sidebar.expander("Filtros de esta sección", expanded=False)
     advanced_context = AdvancedFilterContext(
         brands=selected in {"Resumen Ejecutivo", "Ventas", "Clientes", "Vendedores", "Productos"},
         categories=selected in {"Resumen Ejecutivo", "Ventas", "Productos"},
@@ -48,6 +47,20 @@ def build_sidebar(
         order_types=selected in {"Resumen Ejecutivo", "Ventas", "Clientes", "Productos", "Pedidos por Surtir"},
         order_statuses=selected == "Pedidos por Surtir",
     )
+    show_section_filters = any(
+        [
+            advanced_context.brands,
+            advanced_context.categories,
+            advanced_context.vendors,
+            advanced_context.sale_origins,
+            advanced_context.client_origins,
+            advanced_context.recommendation_sources,
+            advanced_context.invoice_types,
+            advanced_context.order_types,
+            advanced_context.order_statuses,
+        ]
+    )
+    expander = st.sidebar.expander("Filtros de esta sección", expanded=False) if show_section_filters else None
     advanced_filters = build_advanced_filters(ventas, pedidos_df, advanced_context, expander)
 
     bundle = st.session_state.setdefault("data_bundle", load_bundle())
@@ -135,3 +148,8 @@ def run_app() -> None:
 
 if __name__ == "__main__":
     run_app()
+
+# Checklist:
+# - theme.py aplicado: sai_alpha/theme.py + sai_alpha/ui.py (apply_theme).
+# - filters refactor: sai_alpha/filters.py (periodo, rango, granularidad, persistencia).
+# - charts agregados por página: sai_alpha/sections/*.py.

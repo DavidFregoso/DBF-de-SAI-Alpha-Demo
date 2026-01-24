@@ -7,11 +7,13 @@ import plotly.express as px
 
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
+from sai_alpha.theme import get_plotly_template
 from sai_alpha.ui import export_buttons, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Vendedores", subtitle="Desempeño individual y comparativo")
+    plotly_template = get_plotly_template(st.session_state.get("theme", "dark"))
 
     filtered = filters.sales
     if filtered.empty:
@@ -73,6 +75,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
     fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
     fig.update_traces(hovertemplate="%{y}<br>%{x:,.2f}<extra></extra>")
     fig.update_xaxes(tickformat=",.2f")
+    fig.update_layout(template=plotly_template)
     st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
@@ -86,6 +89,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
     )
     fig_orders.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
     fig_orders.update_traces(hovertemplate="%{x}<br>Pedidos: %{y:,.0f}<extra></extra>")
+    fig_orders.update_layout(template=plotly_template)
     st.plotly_chart(fig_orders, use_container_width=True)
 
     st.divider()
@@ -98,6 +102,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
     )
     fig_share.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
     fig_share.update_traces(hovertemplate="%{label}<br>%{value:,.2f}<extra></extra>")
+    fig_share.update_layout(template=plotly_template)
     st.plotly_chart(fig_share, use_container_width=True)
 
     st.divider()
@@ -119,6 +124,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
     fig_trend.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
     fig_trend.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>%{y:,.2f}<extra></extra>")
     fig_trend.update_yaxes(tickformat=",.2f")
+    fig_trend.update_layout(template=plotly_template)
     st.plotly_chart(fig_trend, use_container_width=True)
 
     st.divider()

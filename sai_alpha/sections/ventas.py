@@ -7,12 +7,14 @@ import plotly.express as px
 from sai_alpha.charts import invoice_type_donut, orders_and_revenue_trend, stacked_channel_over_time
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
+from sai_alpha.theme import get_plotly_template
 from sai_alpha.ui import export_buttons, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Ventas", subtitle="Evolución, canales y marcas con foco comercial")
     theme_cfg = st.session_state.get("theme_cfg", {})
+    plotly_template = get_plotly_template(st.session_state.get("theme", "dark"))
 
     filtered = filters.sales
     if filtered.empty:
@@ -48,6 +50,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         filters.granularity,
         theme_cfg,
     )
+    fig_trend.update_layout(template=plotly_template)
     st.plotly_chart(fig_trend, use_container_width=True)
 
     st.divider()
@@ -62,6 +65,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
             filters.granularity,
             theme_cfg,
         )
+        fig_channel.update_layout(template=plotly_template)
         st.plotly_chart(fig_channel, use_container_width=True)
     else:
         st.info("No hay origen de venta disponible para agrupar.")
@@ -80,6 +84,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         fig_brand.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_brand.update_traces(hovertemplate="%{y}<br>%{x:,.2f}<extra></extra>")
         fig_brand.update_xaxes(tickformat=",.2f")
+        fig_brand.update_layout(template=plotly_template)
         st.plotly_chart(fig_brand, use_container_width=True)
     else:
         st.info("No hay información de marca disponible en este dataset.")
@@ -94,6 +99,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
             filters.currency_label,
             theme_cfg,
         )
+        fig_invoice.update_layout(template=plotly_template)
         st.plotly_chart(fig_invoice, use_container_width=True)
     else:
         st.info("No hay tipo de factura disponible.")
@@ -122,6 +128,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         fig_scatter.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_scatter.update_traces(hovertemplate="%{hovertext}<br>Pedidos: %{x:,.0f}<br>Ticket: %{y:,.2f}")
         fig_scatter.update_yaxes(tickformat=",.2f")
+        fig_scatter.update_layout(template=plotly_template)
         st.plotly_chart(fig_scatter, use_container_width=True)
     else:
         st.info("No hay clientes disponibles para construir el scatter de tickets.")

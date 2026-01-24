@@ -7,11 +7,13 @@ import plotly.express as px
 
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
+from sai_alpha.theme import get_plotly_template
 from sai_alpha.ui import export_buttons, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Clientes", subtitle="Clientes activos, origen y recurrencia")
+    plotly_template = get_plotly_template(st.session_state.get("theme", "dark"))
 
     filtered = filters.sales
     if filtered.empty:
@@ -87,6 +89,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         fig_top_clients.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_top_clients.update_traces(hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>")
         fig_top_clients.update_yaxes(tickformat=",.2f")
+        fig_top_clients.update_layout(template=plotly_template)
         st.plotly_chart(fig_top_clients, use_container_width=True)
 
     st.divider()
@@ -108,6 +111,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         )
         fig_clients.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_clients.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Clientes: %{y:,.0f}<extra></extra>")
+        fig_clients.update_layout(template=plotly_template)
         st.plotly_chart(fig_clients, use_container_width=True)
     else:
         st.info("No hay fechas o clientes para construir la tendencia.")
@@ -121,6 +125,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         fig_recommend = px.pie(recommend, values="Clientes", names="RECOMM_SOURCE", hole=0.5)
         fig_recommend.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_recommend.update_traces(hovertemplate="%{label}<br>Clientes: %{value:,.0f}<extra></extra>")
+        fig_recommend.update_layout(template=plotly_template)
         st.plotly_chart(fig_recommend, use_container_width=True)
     else:
         st.info("No hay datos de recomendación disponibles.")
@@ -139,6 +144,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         )
         fig_origin.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_origin.update_traces(hovertemplate="%{x}<br>Clientes: %{y:,.0f}<extra></extra>")
+        fig_origin.update_layout(template=plotly_template)
         st.plotly_chart(fig_origin, use_container_width=True)
 
     st.divider()

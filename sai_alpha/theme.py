@@ -2,43 +2,21 @@ from __future__ import annotations
 
 from typing import Any
 
-import plotly.io as pio
+import plotly.graph_objects as go
 import streamlit as st
 
-
-def get_theme_config(theme_name: str) -> dict[str, Any]:
-    normalized = (theme_name or "Claro").strip().lower()
-    if normalized in {"oscuro", "dark"}:
-        return {
-            "name": "Oscuro",
-            "bg": "#0f1116",
-            "panel": "#1a202a",
-            "text": "#f5f7fb",
-            "muted": "#b6c2d0",
-            "grid": "#2f3a49",
-            "accent": "#33c28a",
-            "palette": [
-                "#33c28a",
-                "#5aa7ff",
-                "#ff9f40",
-                "#ff6b6b",
-                "#c77dff",
-                "#f7b801",
-                "#2ec4b6",
-                "#e36414",
-                "#90be6d",
-                "#4d908e",
-            ],
-            "plotly_template_name": "sai_alpha_dark",
-        }
-    return {
+THEME_TOKENS: dict[str, dict[str, Any]] = {
+    "light": {
         "name": "Claro",
-        "bg": "#f7f8fb",
-        "panel": "#ffffff",
-        "text": "#111111",
-        "muted": "#64748b",
-        "grid": "rgba(0,0,0,0.10)",
+        "bg": "#f7f7f9",
+        "card": "#ffffff",
+        "fg": "#111827",
+        "muted": "#6b7280",
+        "border": "rgba(0,0,0,.12)",
+        "grid": "rgba(0,0,0,.10)",
         "accent": "#156f4c",
+        "paper_bg": "#ffffff",
+        "plot_bg": "#ffffff",
         "palette": [
             "#156f4c",
             "#1d4ed8",
@@ -51,32 +29,104 @@ def get_theme_config(theme_name: str) -> dict[str, Any]:
             "#be185d",
             "#334155",
         ],
-        "plotly_template_name": "sai_alpha_light",
+    },
+    "dark": {
+        "name": "Oscuro",
+        "bg": "#0b1220",
+        "card": "#121a2a",
+        "fg": "#e5e7eb",
+        "muted": "#9ca3af",
+        "border": "rgba(255,255,255,.12)",
+        "grid": "rgba(255,255,255,.12)",
+        "accent": "#33c28a",
+        "paper_bg": "#121a2a",
+        "plot_bg": "#121a2a",
+        "palette": [
+            "#33c28a",
+            "#5aa7ff",
+            "#ff9f40",
+            "#ff6b6b",
+            "#c77dff",
+            "#f7b801",
+            "#2ec4b6",
+            "#e36414",
+            "#90be6d",
+            "#4d908e",
+        ],
+    },
+}
+
+
+def _normalize_theme(theme: str | None, default: str = "dark") -> str:
+    normalized = (theme or "").strip().lower()
+    if normalized in {"light", "dark"}:
+        return normalized
+    return default
+
+
+def get_theme_config(theme: str) -> dict[str, Any]:
+    normalized = _normalize_theme(theme)
+    tokens = THEME_TOKENS[normalized]
+    return {
+        "name": tokens["name"],
+        "bg": tokens["bg"],
+        "panel": tokens["card"],
+        "text": tokens["fg"],
+        "muted": tokens["muted"],
+        "grid": tokens["grid"],
+        "accent": tokens["accent"],
+        "palette": tokens["palette"],
     }
 
 
-def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
-    bg = theme_cfg["bg"]
-    panel = theme_cfg["panel"]
-    text = theme_cfg["text"]
-    muted = theme_cfg["muted"]
-    accent = theme_cfg["accent"]
-    grid = theme_cfg["grid"]
-    is_dark = theme_cfg["name"] == "Oscuro"
-    hover_bg = "#1f2937" if is_dark else "rgba(15, 23, 42, 0.06)"
-    tab_active_bg = "#111827" if is_dark else "rgba(15, 23, 42, 0.08)"
+def init_theme_state(default: str = "dark") -> None:
+    theme_param = st.query_params.get("theme")
+    if isinstance(theme_param, list):
+        theme_param = theme_param[0] if theme_param else None
+
+    if isinstance(theme_param, str) and theme_param.strip().lower() in {"light", "dark"}:
+        st.session_state["theme"] = theme_param.strip().lower()
+    elif "theme" not in st.session_state:
+        st.session_state["theme"] = _normalize_theme(default)
+
+    st.query_params["theme"] = st.session_state["theme"]
+
+
+def set_theme(theme: str) -> None:
+    normalized = (theme or "").strip().lower()
+    if normalized not in {"light", "dark"}:
+        raise ValueError("theme must be 'light' or 'dark'")
+    st.session_state["theme"] = normalized
+    st.query_params["theme"] = normalized
+    st.rerun()
+
+
+def apply_theme_css(theme: str) -> None:
+    normalized = _normalize_theme(theme)
+    tokens = THEME_TOKENS[normalized]
+    accent = st.session_state.get("theme_accent", tokens["accent"])
+
+    density = st.session_state.get("table_density", "Confortable")
+    st.session_state["sidebar_header_rendered"] = False
+    row_height = {"Compacta": 26, "Confortable": 34, "Amplia": 42}.get(density, 34)
+    st.session_state["row_height"] = row_height
+
+    st.session_state["theme_cfg"] = get_theme_config(normalized)
+    st.session_state["plotly_colors"] = tokens["palette"]
+
     st.markdown(
         f"""
         <style>
             :root {{
-                color-scheme: { "dark" if is_dark else "light" };
-                --bg: {bg};
-                --fg: {text};
-                --card: {panel};
-                --border: {grid};
-                --muted: {muted};
+                color-scheme: {normalized};
+                --bg: {tokens["bg"]};
+                --card: {tokens["card"]};
+                --fg: {tokens["fg"]};
+                --muted: {tokens["muted"]};
+                --border: {tokens["border"]};
                 --accent: {accent};
             }}
+
             #MainMenu {{ visibility: hidden; }}
             header {{ visibility: hidden; }}
             footer {{ visibility: hidden; }}
@@ -88,8 +138,17 @@ def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
             body,
             .stApp,
             [data-testid="stAppViewContainer"] {{
-                background-color: var(--bg);
+                background-color: var(--bg) !important;
+                color: var(--fg) !important;
+            }}
+
+            [data-testid="stAppViewContainer"] * {{
                 color: var(--fg);
+            }}
+
+            input,
+            textarea {{
+                -webkit-text-fill-color: var(--fg) !important;
             }}
 
             [data-testid="stHeader"],
@@ -98,30 +157,8 @@ def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
                 color: var(--fg);
             }}
 
-            [data-testid="stAppViewContainer"] p,
-            [data-testid="stAppViewContainer"] span,
-            [data-testid="stAppViewContainer"] label,
-            [data-testid="stAppViewContainer"] h1,
-            [data-testid="stAppViewContainer"] h2,
-            [data-testid="stAppViewContainer"] h3,
-            [data-testid="stAppViewContainer"] h4,
-            [data-testid="stAppViewContainer"] h5,
-            [data-testid="stAppViewContainer"] h6,
-            [data-testid="stMarkdownContainer"],
-            [data-testid="stMetricValue"],
-            [data-testid="stMetricLabel"],
-            [data-testid="stSidebar"] .stMarkdown,
-            [data-testid="stSidebar"] label,
-            [data-testid="stSidebar"] .stCaption,
-            [data-testid="stSidebar"] .stRadio,
-            [data-testid="stSidebar"] .stSelectbox,
-            [data-testid="stSidebar"] .stMultiSelect,
-            [data-testid="stSidebar"] .stDateInput {{
-                color: var(--fg);
-            }}
-
             section[data-testid="stSidebar"] {{
-                background-color: var(--bg) !important;
+                background: var(--bg) !important;
                 min-width: 360px;
                 width: 360px;
             }}
@@ -133,7 +170,9 @@ def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
                 color: var(--fg) !important;
             }}
 
-            [data-testid="stMarkdownContainer"] {{
+            [data-testid="stMarkdownContainer"],
+            [data-testid="stMetricValue"],
+            [data-testid="stMetricLabel"] {{
                 color: var(--fg);
             }}
 
@@ -248,9 +287,6 @@ def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
                 color: var(--fg);
                 border-bottom: 1px solid var(--border);
             }}
-            [data-testid="stDataFrame"] tbody tr:hover {{
-                background: {hover_bg};
-            }}
 
             .stSelectbox > div > div,
             .stMultiSelect > div > div,
@@ -261,31 +297,35 @@ def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
                 border-color: var(--border);
             }}
 
+            button,
+            button * {{
+                color: var(--fg) !important;
+            }}
+            button {{
+                background: var(--card) !important;
+                border: 1px solid var(--border) !important;
+                box-shadow: none !important;
+            }}
+            [data-testid="baseButton-primary"] button {{
+                background: var(--accent) !important;
+                color: white !important;
+            }}
+            button:hover {{
+                filter: brightness(0.97);
+            }}
+            button:disabled {{
+                opacity: .6;
+            }}
+
             [data-testid="stButton"] > button,
             [data-testid="baseButton-primary"] > button,
             [data-testid="baseButton-secondary"] > button,
             [data-testid="stDownloadButton"] button,
-            button[kind],
-            button {{
+            button[kind] {{
                 background: var(--card) !important;
                 border: 1px solid var(--border) !important;
                 color: var(--fg) !important;
                 box-shadow: none !important;
-            }}
-            button:hover,
-            [data-testid="stButton"] > button:hover,
-            [data-testid="baseButton-primary"] > button:hover,
-            [data-testid="baseButton-secondary"] > button:hover,
-            [data-testid="stDownloadButton"] button:hover {{
-                background: {hover_bg} !important;
-                color: var(--fg) !important;
-            }}
-            button *,
-            [data-testid="stButton"] > button *,
-            [data-testid="baseButton-primary"] > button *,
-            [data-testid="baseButton-secondary"] > button *,
-            [data-testid="stDownloadButton"] button * {{
-                color: var(--fg) !important;
             }}
 
             div[data-baseweb="select"] > div,
@@ -309,9 +349,11 @@ def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
             }}
 
             ul[role="listbox"],
-            li[role="option"] {{
+            li[role="option"],
+            [role="menu"] {{
                 background: var(--card) !important;
                 color: var(--fg) !important;
+                border: 1px solid var(--border) !important;
             }}
 
             .stRadio div[role="radiogroup"] label,
@@ -325,7 +367,7 @@ def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
                 color: var(--fg) !important;
             }}
             [role="tablist"] button[aria-selected="true"] {{
-                background: {tab_active_bg} !important;
+                background: var(--bg) !important;
                 border-color: var(--accent) !important;
                 color: var(--fg) !important;
             }}
@@ -341,44 +383,24 @@ def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
     )
 
 
-def apply_global_css(theme_cfg: dict[str, Any]) -> None:
-    apply_theme_css(theme_cfg)
-
-
-def apply_plotly_theme(theme_cfg: dict[str, Any]) -> None:
-    template_name = theme_cfg["plotly_template_name"]
-    is_light = theme_cfg["name"] == "Claro"
-    paper_bg = "#ffffff" if is_light else theme_cfg["bg"]
-    plot_bg = "#ffffff" if is_light else theme_cfg["panel"]
-    pio.templates[template_name] = dict(
-        layout=dict(
-            colorway=theme_cfg["palette"],
-            font=dict(family="Inter, sans-serif", color=theme_cfg["text"]),
-            paper_bgcolor=paper_bg,
-            plot_bgcolor=plot_bg,
-            hovermode="x unified",
-            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=theme_cfg["text"])),
+def get_plotly_template(theme: str) -> go.layout.Template:
+    normalized = _normalize_theme(theme)
+    tokens = THEME_TOKENS[normalized]
+    return go.layout.Template(
+        layout=go.Layout(
+            paper_bgcolor=tokens["paper_bg"],
+            plot_bgcolor=tokens["plot_bg"],
+            font=dict(color=tokens["fg"]),
+            colorway=tokens["palette"],
             xaxis=dict(
-                showgrid=True,
-                gridcolor=theme_cfg["grid"],
-                zerolinecolor=theme_cfg["grid"],
-                linecolor=theme_cfg["grid"],
-                tickfont=dict(color=theme_cfg["text"]),
-                titlefont=dict(color=theme_cfg["text"]),
+                gridcolor=tokens["grid"],
+                zerolinecolor=tokens["grid"],
+                linecolor=tokens["grid"],
             ),
             yaxis=dict(
-                showgrid=True,
-                gridcolor=theme_cfg["grid"],
-                zerolinecolor=theme_cfg["grid"],
-                linecolor=theme_cfg["grid"],
-                tickfont=dict(color=theme_cfg["text"]),
-                titlefont=dict(color=theme_cfg["text"]),
-            ),
-            hoverlabel=dict(
-                bgcolor=theme_cfg["panel"],
-                bordercolor=theme_cfg["grid"],
-                font=dict(color=theme_cfg["text"]),
+                gridcolor=tokens["grid"],
+                zerolinecolor=tokens["grid"],
+                linecolor=tokens["grid"],
             ),
         )
     )
-    pio.templates.default = template_name

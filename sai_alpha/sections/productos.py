@@ -10,11 +10,13 @@ from sai_alpha.etl import normalize_columns, resolve_dbf_dir
 from sai_alpha.formatting import fmt_int, fmt_money, fmt_num, fmt_units, safe_metric
 from sai_alpha.filters import FilterState
 from sai_alpha.schema import ensure_inventory_columns, resolve_column
+from sai_alpha.theme import get_plotly_template
 from sai_alpha.ui import export_buttons, notify_once, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Productos", subtitle="Rotación, inventario y productos críticos")
+    plotly_template = get_plotly_template(st.session_state.get("theme", "dark"))
 
     filtered = filters.sales
     if filtered.empty:
@@ -145,6 +147,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
             yaxis2=dict(title="% acumulado", overlaying="y", side="right", tickformat=".0f"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
+        fig.update_layout(template=plotly_template)
         st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
@@ -159,6 +162,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         fig_top_rev.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_top_rev.update_traces(hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>")
         fig_top_rev.update_yaxes(tickformat=",.2f")
+        fig_top_rev.update_layout(template=plotly_template)
         st.plotly_chart(fig_top_rev, use_container_width=True)
 
     st.divider()
@@ -180,6 +184,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         )
         fig_units.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_units.update_traces(hovertemplate="%{x}<br>Unidades: %{y:,.0f}<extra></extra>")
+        fig_units.update_layout(template=plotly_template)
         st.plotly_chart(fig_units, use_container_width=True)
     else:
         st.info("No hay unidades disponibles para el ranking.")
@@ -198,6 +203,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         )
         fig_scatter.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_scatter.update_traces(hovertemplate="%{hovertext}<br>Stock: %{x:,.0f}<br>Unidades: %{y:,.0f}")
+        fig_scatter.update_layout(template=plotly_template)
         st.plotly_chart(fig_scatter, use_container_width=True)
     else:
         st.info("No hay inventario suficiente para el scatter.")
@@ -215,6 +221,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         fig_inv.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_inv.update_traces(hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>")
         fig_inv.update_yaxes(tickformat=",.2f")
+        fig_inv.update_layout(template=plotly_template)
         st.plotly_chart(fig_inv, use_container_width=True)
     else:
         st.info("No hay categoría disponible para inventario.")

@@ -7,6 +7,7 @@ from sai_alpha.charts import channel_share_donut, revenue_trend, top_categories_
 from sai_alpha.formatting import fmt_int, fmt_money, fmt_num, safe_metric
 from sai_alpha.filters import FilterState
 from sai_alpha.schema import require_columns, resolve_column
+from sai_alpha.theme import get_plotly_template
 from sai_alpha.ui import render_page_header, table_height
 
 
@@ -83,6 +84,7 @@ def render(
 ) -> None:
     render_page_header("Resumen Ejecutivo")
     theme_cfg = st.session_state.get("theme_cfg", {})
+    plotly_template = get_plotly_template(st.session_state.get("theme", "dark"))
 
     filtered = filters.sales
     if filtered.empty:
@@ -116,6 +118,7 @@ def render(
         filters.granularity,
         theme_cfg,
     )
+    fig.update_layout(template=plotly_template)
     st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
@@ -128,6 +131,7 @@ def render(
             filters.currency_label,
             theme_cfg,
         )
+        fig_categories.update_layout(template=plotly_template)
         st.plotly_chart(fig_categories, use_container_width=True)
     else:
         st.info("No hay categorías disponibles para mostrar.")
@@ -142,6 +146,7 @@ def render(
             filters.currency_label,
             theme_cfg,
         )
+        fig_channel.update_layout(template=plotly_template)
         st.plotly_chart(fig_channel, use_container_width=True)
     else:
         st.info("No hay origen de venta disponible para graficar.")
@@ -158,6 +163,7 @@ def render(
     if heatmap is None:
         st.info("No hay suficientes datos para mostrar el mapa de calor.")
     else:
+        heatmap.update_layout(template=plotly_template)
         st.plotly_chart(heatmap, use_container_width=True)
 
     st.divider()

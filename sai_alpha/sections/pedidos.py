@@ -7,11 +7,13 @@ import plotly.express as px
 
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
+from sai_alpha.theme import get_plotly_template
 from sai_alpha.ui import build_time_series, export_buttons, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Pedidos por Surtir", subtitle="Backlog y monto pendiente")
+    plotly_template = get_plotly_template(st.session_state.get("theme", "dark"))
     if filters.granularity == "Semanal":
         st.caption("Pedidos por surtir (semana seleccionada)")
 
@@ -81,6 +83,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Monto: %{y:,.2f}<extra></extra>")
         fig.update_yaxes(tickformat=",.2f")
+        fig.update_layout(template=plotly_template)
         st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
@@ -95,6 +98,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         )
         fig_type.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_type.update_traces(hovertemplate="%{x}<br>Unidades: %{y:,.0f}<extra></extra>")
+        fig_type.update_layout(template=plotly_template)
         st.plotly_chart(fig_type, use_container_width=True)
     else:
         st.info("No hay tipo de orden disponible para graficar.")
@@ -119,6 +123,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         fig_category.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_category.update_traces(hovertemplate="%{x}<br>Monto: %{y:,.2f}<extra></extra>")
         fig_category.update_yaxes(tickformat=",.2f")
+        fig_category.update_layout(template=plotly_template)
         st.plotly_chart(fig_category, use_container_width=True)
     else:
         st.info("No hay categoría o marca disponible para agrupar.")
@@ -135,6 +140,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         )
         fig_status.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig_status.update_traces(hovertemplate="%{x}<br>Unidades: %{y:,.0f}<extra></extra>")
+        fig_status.update_layout(template=plotly_template)
         st.plotly_chart(fig_status, use_container_width=True)
     else:
         st.info("No hay estatus disponible para agrupar.")

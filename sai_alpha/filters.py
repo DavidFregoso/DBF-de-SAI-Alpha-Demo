@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 import calendar
 
 import pandas as pd
@@ -120,6 +120,7 @@ def multiselect_with_actions(container, label: str, options: list[str] | None, k
     safe_container = container if container is not None else st.sidebar
     safe_options = options or []
     _init_multiselect_state(key, safe_options)
+    selection = safe_container.multiselect(label, safe_options, key=key)
     try:
         col1, col2 = safe_container.columns(2)
     except AttributeError:
@@ -128,7 +129,7 @@ def multiselect_with_actions(container, label: str, options: list[str] | None, k
         st.session_state[key] = safe_options
     if col2.button("Limpiar", key=f"{key}_clear"):
         st.session_state[key] = []
-    return safe_container.multiselect(label, safe_options, key=key)
+    return selection
 
 
 def _week_range_from_selection(year: int, week: int) -> tuple[date, date]:
@@ -149,7 +150,11 @@ def _year_range_from_selection(year: int) -> tuple[date, date]:
 
 
 def _format_week_label(week: int, year: int) -> str:
-    return f"Semana {int(week):02d} - {int(year)}"
+    return f"Semana {int(week):02d} {int(year)}"
+
+
+def _format_week_option(week: int) -> str:
+    return f"Semana {int(week):02d}"
 
 
 def _format_month_label(month: int, year: int) -> str:
@@ -169,6 +174,25 @@ def _format_month_label(month: int, year: int) -> str:
         "Diciembre",
     ]
     return f"{month_names[int(month)]} {int(year)}"
+
+
+def _format_month_option(month: int) -> str:
+    month_names = [
+        "",
+        "Enero",
+        "Febrero",
+        "Marzo",
+        "Abril",
+        "Mayo",
+        "Junio",
+        "Julio",
+        "Agosto",
+        "Septiembre",
+        "Octubre",
+        "Noviembre",
+        "Diciembre",
+    ]
+    return f"{month_names[int(month)]}"
 
 
 def _format_year_label(year: int) -> str:
@@ -270,49 +294,49 @@ def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
     if period_type == "Último periodo disponible (recomendado)":
         start_date, end_date, period_selection_label = _latest_available_period(periods)
     elif period_type == "Mes":
-        month_options = [
-            (int(year), int(month))
-            for year in sorted(periods["months_by_year"])
-            for month in periods["months_by_year"][year]
-        ]
-        if not month_options:
-            month_options = [(int(periods["latest_month_year"]), int(periods["latest_month"]))]
-        default_option = (int(st.session_state["selected_month_year"]), int(st.session_state["selected_month"]))
-        if default_option not in month_options:
-            default_option = month_options[-1]
-        st.session_state.setdefault("selected_month_option", default_option)
-        selection = st.sidebar.selectbox(
+        years = periods["years"] or [int(periods["latest_month_year"])]
+        selected_year = st.sidebar.selectbox(
+            "Año",
+            years,
+            key="selected_month_year",
+            format_func=_format_year_label,
+        )
+        months_for_year = periods["months_by_year"].get(int(selected_year), [])
+        if not months_for_year:
+            months_for_year = list(range(1, 13))
+        default_month = int(st.session_state.get("selected_month", months_for_year[0]))
+        if default_month not in months_for_year:
+            default_month = months_for_year[0]
+        selected_month = st.sidebar.selectbox(
             "Mes",
-            month_options,
-            key="selected_month_option",
-            format_func=lambda value: _format_month_label(value[1], value[0]),
+            months_for_year,
+            key="selected_month",
+            format_func=_format_month_option,
         )
-        st.session_state["selected_month_year"] = selection[0]
-        st.session_state["selected_month"] = selection[1]
-        start_date, end_date = _month_range_from_selection(selection[0], selection[1])
-        period_selection_label = _format_month_label(selection[1], selection[0])
+        start_date, end_date = _month_range_from_selection(int(selected_year), int(selected_month))
+        period_selection_label = _format_month_label(int(selected_month), int(selected_year))
     elif period_type == "Semana":
-        week_options = [
-            (int(year), int(week))
-            for year in sorted(periods["weeks_by_year"])
-            for week in periods["weeks_by_year"][year]
-        ]
-        if not week_options:
-            week_options = [(int(periods["latest_week_year"]), int(periods["latest_week"]))]
-        default_option = (int(st.session_state["selected_week_year"]), int(st.session_state["selected_week"]))
-        if default_option not in week_options:
-            default_option = week_options[-1]
-        st.session_state.setdefault("selected_week_option", default_option)
-        selection = st.sidebar.selectbox(
-            "Semana",
-            week_options,
-            key="selected_week_option",
-            format_func=lambda value: _format_week_label(value[1], value[0]),
+        years = periods["years"] or [int(periods["latest_week_year"])]
+        selected_year = st.sidebar.selectbox(
+            "Año",
+            years,
+            key="selected_week_year",
+            format_func=_format_year_label,
         )
-        st.session_state["selected_week_year"] = selection[0]
-        st.session_state["selected_week"] = selection[1]
-        start_date, end_date = _week_range_from_selection(selection[0], selection[1])
-        period_selection_label = _format_week_label(selection[1], selection[0])
+        weeks_for_year = periods["weeks_by_year"].get(int(selected_year), [])
+        if not weeks_for_year:
+            weeks_for_year = list(range(1, 53))
+        default_week = int(st.session_state.get("selected_week", weeks_for_year[0]))
+        if default_week not in weeks_for_year:
+            default_week = weeks_for_year[0]
+        selected_week = st.sidebar.selectbox(
+            "Semana",
+            weeks_for_year,
+            key="selected_week",
+            format_func=_format_week_option,
+        )
+        start_date, end_date = _week_range_from_selection(int(selected_year), int(selected_week))
+        period_selection_label = _format_week_label(int(selected_week), int(selected_year))
     elif period_type == "Año":
         years = periods["years"] or [periods["latest_year"]]
         selection = st.sidebar.selectbox("Año", years, key="selected_year", format_func=_format_year_label)
@@ -345,17 +369,6 @@ def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
         ["Auto", "Diario", "Semanal", "Mensual"],
         key="granularity",
     )
-
-    if st.sidebar.button("Actualizar ahora", key="refresh_now"):
-        refreshed_at = datetime.now()
-        st.session_state["last_refresh_ts"] = refreshed_at
-        st.toast(f"Datos actualizados: {refreshed_at:%d/%m/%Y %H:%M}")
-
-    last_refresh = st.session_state.get("last_refresh_ts")
-    if last_refresh:
-        st.sidebar.caption(f"Última actualización: {last_refresh:%d/%m/%Y %H:%M}")
-    else:
-        st.sidebar.caption("Última actualización: pendiente")
 
     days_range = max(1, (end_date - start_date).days + 1)
     recommended = _recommended_granularity(days_range)

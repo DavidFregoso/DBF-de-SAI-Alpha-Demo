@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import streamlit as st
 
 from sai_alpha.etl import resolve_dbf_dir
@@ -98,18 +100,18 @@ def run_app() -> None:
     apply_theme()
 
     sections = [
+        "Configuración",
         "Resumen Ejecutivo",
         "Ventas",
         "Clientes",
         "Vendedores",
         "Productos",
         "Pedidos por Surtir",
-        "Configuración",
     ]
     selected, filters = build_sidebar(ventas, pedidos_df, sections)
-    last_update = st.session_state.get("data_max_date")
-    last_update_label = last_update.strftime("%d/%m/%Y") if last_update else None
-    render_app_header(filters.period_label, filters.currency_label, last_update_label)
+    st.session_state.setdefault("last_refresh_ts", datetime.now())
+    last_refresh = st.session_state.get("last_refresh_ts")
+    render_app_header(filters.period_label, filters.currency_label, last_refresh)
 
     aggregates = build_aggregates(
         ventas,

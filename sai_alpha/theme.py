@@ -35,9 +35,9 @@ def get_theme_config(theme_name: str) -> dict[str, Any]:
         "name": "Claro",
         "bg": "#f7f8fb",
         "panel": "#ffffff",
-        "text": "#1f2a37",
+        "text": "#111111",
         "muted": "#64748b",
-        "grid": "#e2e8f0",
+        "grid": "rgba(0,0,0,0.10)",
         "accent": "#156f4c",
         "palette": [
             "#156f4c",
@@ -62,11 +62,12 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
     muted = theme_cfg["muted"]
     accent = theme_cfg["accent"]
     grid = theme_cfg["grid"]
+    is_dark = theme_cfg["name"] == "Oscuro"
     st.markdown(
         f"""
         <style>
             :root {{
-                color-scheme: { "dark" if theme_cfg["name"] == "Oscuro" else "light" };
+                color-scheme: { "dark" if is_dark else "light" };
             }}
             #MainMenu {{ visibility: hidden; }}
             header {{ visibility: hidden; }}
@@ -76,7 +77,9 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
             [data-testid="stDecoration"] {{ visibility: hidden; }}
             [data-testid="stDeployButton"] {{ display: none; }}
 
-            .stApp {{
+            body,
+            .stApp,
+            [data-testid="stAppViewContainer"] {{
                 background-color: {bg};
                 color: {text};
             }}
@@ -91,11 +94,24 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
                 width: 360px;
             }}
 
+            [data-testid="stAppViewContainer"] p,
+            [data-testid="stAppViewContainer"] span,
+            [data-testid="stAppViewContainer"] label,
+            [data-testid="stAppViewContainer"] h1,
+            [data-testid="stAppViewContainer"] h2,
+            [data-testid="stAppViewContainer"] h3,
+            [data-testid="stAppViewContainer"] h4,
+            [data-testid="stAppViewContainer"] h5,
+            [data-testid="stAppViewContainer"] h6,
+            [data-testid="stMarkdownContainer"],
+            [data-testid="stMetricValue"],
+            [data-testid="stMetricLabel"],
             [data-testid="stSidebar"] .stMarkdown,
             [data-testid="stSidebar"] label,
             [data-testid="stSidebar"] .stCaption,
             [data-testid="stSidebar"] .stRadio,
             [data-testid="stSidebar"] .stSelectbox,
+            [data-testid="stSidebar"] .stMultiSelect,
             [data-testid="stSidebar"] .stDateInput {{
                 color: {text};
             }}
@@ -145,6 +161,16 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
                 font-size: 0.8rem;
                 color: {text};
                 box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            }}
+            .refresh-box {{
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 0.35rem;
+            }}
+            .refresh-label {{
+                color: {muted};
+                font-size: 0.8rem;
             }}
             [data-testid="stMetricValue"] {{
                 color: {accent};
@@ -198,6 +224,9 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
                 color: {text};
                 border-bottom: 1px solid {grid};
             }}
+            [data-testid="stDataFrame"] tbody tr:hover {{
+                background: { "#1f2937" if is_dark else "rgba(0,0,0,0.04)" };
+            }}
 
             .stSelectbox > div > div,
             .stMultiSelect > div > div,
@@ -221,12 +250,15 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
 
 def apply_plotly_theme(theme_cfg: dict[str, Any]) -> None:
     template_name = theme_cfg["plotly_template_name"]
+    is_light = theme_cfg["name"] == "Claro"
+    paper_bg = "#ffffff" if is_light else theme_cfg["bg"]
+    plot_bg = "#ffffff" if is_light else theme_cfg["panel"]
     pio.templates[template_name] = dict(
         layout=dict(
             colorway=theme_cfg["palette"],
             font=dict(family="Inter, sans-serif", color=theme_cfg["text"]),
-            paper_bgcolor=theme_cfg["bg"],
-            plot_bgcolor=theme_cfg["panel"],
+            paper_bgcolor=paper_bg,
+            plot_bgcolor=plot_bg,
             hovermode="x unified",
             legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=theme_cfg["text"])),
             xaxis=dict(
@@ -253,4 +285,3 @@ def apply_plotly_theme(theme_cfg: dict[str, Any]) -> None:
         )
     )
     pio.templates.default = template_name
-

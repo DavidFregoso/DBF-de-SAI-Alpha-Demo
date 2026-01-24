@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from datetime import datetime
 from pathlib import Path
 import importlib.util
 
@@ -17,12 +18,12 @@ DATA_DIR = resolve_dbf_dir()
 EXPORT_DIR = Path("data/exports")
 
 PAGE_ROUTES = {
+    "Configuración": "pages/6_Configuración.py",
     "Resumen Ejecutivo": "pages/1_Resumen Ejecutivo.py",
     "Clientes": "pages/2_Clientes.py",
     "Vendedores": "pages/3_Vendedores.py",
     "Productos": "pages/4_Productos.py",
     "Pedidos por Surtir": "pages/5_Pedidos por Surtir.py",
-    "Configuración": "pages/6_Configuración.py",
 }
 
 
@@ -164,7 +165,7 @@ def validate_bundle(bundle: DataBundle) -> DataBundle:
 
 def apply_theme() -> None:
     density = st.session_state.get("table_density", "Confortable")
-    theme_mode = st.session_state.get("theme_mode", "Claro")
+    theme_mode = st.session_state.get("theme", st.session_state.get("theme_mode", "Claro"))
     st.session_state["sidebar_header_rendered"] = False
     row_height = {"Compacta": 26, "Confortable": 34, "Amplia": 42}.get(density, 34)
     st.session_state["row_height"] = row_height
@@ -203,22 +204,14 @@ def render_sidebar_header() -> None:
         return
     st.sidebar.markdown("<div class='sidebar-title'>Demo Surtidora de Abarrotes</div>", unsafe_allow_html=True)
     st.sidebar.markdown("<div class='sidebar-subtitle'>Dashboard Ejecutivo</div>", unsafe_allow_html=True)
-    st.sidebar.markdown("<div class='sidebar-theme'>Tema</div>", unsafe_allow_html=True)
-    st.sidebar.radio(
-        "Tema",
-        ["Claro", "Oscuro"],
-        key="theme_mode",
-        horizontal=True,
-        label_visibility="collapsed",
-    )
     st.session_state["sidebar_header_rendered"] = True
 
 
 def reset_theme_defaults() -> None:
     st.session_state["theme_primary"] = "#0f5132"
     st.session_state["theme_accent"] = "#198754"
+    st.session_state["theme"] = "Claro"
     st.session_state["table_density"] = "Confortable"
-    st.session_state["theme_mode"] = "Claro"
 
 
 def render_sidebar_filters(ventas: pd.DataFrame, pedidos: pd.DataFrame | None) -> object:
@@ -352,24 +345,36 @@ def render_page_header(section_title: str, subtitle: str = "Dashboard Ejecutivo"
     st.markdown(f"<div class='app-subtitle'>{subtitle}</div>", unsafe_allow_html=True)
 
 
-def render_app_header(period_label: str, currency_label: str, last_update: str | None) -> None:
-    last_update_display = last_update or "Sin datos"
-    st.markdown(
-        f"""
-        <div class="top-header">
-            <div>
-                <div class="top-header-title">Demo Surtidora de Abarrotes</div>
-                <div class="top-header-sub">Dashboard Ejecutivo</div>
-            </div>
-            <div class="status-pills">
-                <span class="status-pill">Periodo seleccionado: {period_label}</span>
-                <span class="status-pill">Moneda: {currency_label}</span>
-                <span class="status-pill">Última actualización: {last_update_display}</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def render_app_header(period_label: str, currency_label: str, last_update: datetime | None) -> None:
+    last_update_display = last_update.strftime("%d/%m/%Y %H:%M") if last_update else "Sin datos"
+    container = st.container()
+    with container:
+        col_left, col_right = st.columns([0.75, 0.25])
+        with col_left:
+            st.markdown(
+                """
+                <div class="top-header">
+                    <div>
+                        <div class="top-header-title">Demo Surtidora de Abarrotes</div>
+                        <div class="top-header-sub">Dashboard Ejecutivo</div>
+                    </div>
+                    <div class="status-pills">
+                        <span class="status-pill">Periodo seleccionado: {period}</span>
+                        <span class="status-pill">Moneda: {currency}</span>
+                    </div>
+                </div>
+                """.format(period=period_label, currency=currency_label),
+                unsafe_allow_html=True,
+            )
+        with col_right:
+            st.markdown(
+                f"<div class='refresh-box'><div class='refresh-label'>Última actualización: {last_update_display}</div></div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("Actualizar ahora", key="refresh_now_header"):
+                refreshed_at = datetime.now()
+                st.session_state["last_refresh_ts"] = refreshed_at
+                st.toast("Datos actualizados (demo).")
 
 
 @st.cache_data(show_spinner=False)

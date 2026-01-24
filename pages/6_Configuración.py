@@ -16,6 +16,12 @@ st.caption("Dashboard Ejecutivo")
 st.title("Configuración")
 
 st.markdown("### Apariencia")
+st.radio(
+    "Tema",
+    ["Claro", "Oscuro"],
+    key="theme",
+    horizontal=True,
+)
 col1, col2 = st.columns(2)
 with col1:
     st.color_picker("Color primario", key="theme_primary")

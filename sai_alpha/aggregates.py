@@ -18,6 +18,18 @@ def _safe_column(df: pd.DataFrame, col: str, default: Any = 0) -> pd.Series:
     return pd.Series([default] * len(df), index=df.index)
 
 
+def _dedupe_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if df.columns.duplicated().any():
+        return df.loc[:, ~df.columns.duplicated()].copy()
+    return df
+
+
+def _assert_unique_columns(df: pd.DataFrame, label: str) -> None:
+    if df.columns.duplicated().any():
+        duplicates = df.columns[df.columns.duplicated()].unique().tolist()
+        raise RuntimeError(f"Columnas duplicadas detectadas en {label}: {duplicates}")
+
+
 @st.cache_data(show_spinner=False)
 def build_aggregates(
     ventas: pd.DataFrame,
@@ -34,7 +46,10 @@ def build_aggregates(
     with perf_logger("build_aggregates"):
         aggregates: dict[str, Any] = {}
 
-        sales = ventas_filtradas
+        sales = _dedupe_columns(ventas_filtradas)
+        productos_filtrados = _dedupe_columns(productos_filtrados)
+        if pedidos_filtrados is not None:
+            pedidos_filtrados = _dedupe_columns(pedidos_filtrados)
         order_column = "FACTURA_ID" if "FACTURA_ID" in sales.columns else "SALE_ID"
         revenue_series = _safe_column(sales, revenue_column, default=0)
         qty_series = _safe_column(sales, "QTY", default=0)
@@ -225,7 +240,7 @@ def build_aggregates(
         aggregates["inventory_over"] = over_stock
 
         if pedidos_filtrados is not None and not pedidos_filtrados.empty:
-            pending = pedidos_filtrados.copy()
+            pending = _dedupe_columns(pedidos_filtrados.copy())
             if "STATUS" not in pending.columns:
                 pending["STATUS"] = "Pendiente"
             pending = pending[pending["STATUS"].isin(["Pendiente", "Parcial"])].copy()
@@ -255,9 +270,15 @@ def build_aggregates(
             pending["QTY_PENDING"] = pd.to_numeric(pending["QTY_PENDING"], errors="coerce").fillna(0)
             warnings: list[str] = []
 
-            def _fill_price(series: pd.Series) -> None:
-                mask = pending["PRICE_MXN"].isna() | pending["PRICE_MXN"].eq(0)
-                pending.loc[mask, "PRICE_MXN"] = series.loc[mask]
+            def _fill_price(series: pd.Series | float | int) -> None:
+                if "PRICE_MXN" not in pending.columns:
+                    pending["PRICE_MXN"] = pd.NA
+                if isinstance(series, pd.Series):
+                    series = series.reindex(pending.index)
+                pending["PRICE_MXN"] = pending["PRICE_MXN"].where(
+                    pending["PRICE_MXN"].notna() & ~pending["PRICE_MXN"].eq(0),
+                    series,
+                )
 
             if "PRICE_USD" in pending.columns:
                 usd_prices = pd.to_numeric(pending["PRICE_USD"], errors="coerce")
@@ -289,26 +310,29 @@ def build_aggregates(
                 product_prices = canonicalize_products(productos_filtrados)[
                     ["PRODUCT_ID", "SKU", "PRICE_MXN", "COST_MXN"]
                 ].copy()
+                product_prices = _dedupe_columns(product_prices).rename(
+                    columns={"PRICE_MXN": "PRICE_MXN_PROD", "COST_MXN": "COST_MXN_PROD"}
+                )
                 if "PRODUCT_ID" in pending.columns:
-                    pending = pending.merge(product_prices, on="PRODUCT_ID", how="left", suffixes=("", "_PROD"))
+                    pending = pending.merge(product_prices, on="PRODUCT_ID", how="left", validate="m:1")
                     if "PRICE_MXN_PROD" in pending.columns:
                         _fill_price(pending["PRICE_MXN_PROD"])
-                    cost_col = "COST_MXN_PROD" if "COST_MXN_PROD" in pending.columns else "COST_MXN"
-                    if cost_col in pending.columns:
-                        _fill_price(pending[cost_col])
+                    if "COST_MXN_PROD" in pending.columns:
+                        _fill_price(pending["COST_MXN_PROD"])
                     pending = pending.drop(
                         columns=[col for col in ["PRICE_MXN_PROD", "COST_MXN_PROD"] if col in pending.columns]
                     )
                 elif "SKU" in pending.columns and "SKU" in product_prices.columns:
-                    pending = pending.merge(product_prices, on="SKU", how="left", suffixes=("", "_PROD"))
+                    pending = pending.merge(product_prices, on="SKU", how="left", validate="m:1")
                     if "PRICE_MXN_PROD" in pending.columns:
                         _fill_price(pending["PRICE_MXN_PROD"])
-                    cost_col = "COST_MXN_PROD" if "COST_MXN_PROD" in pending.columns else "COST_MXN"
-                    if cost_col in pending.columns:
-                        _fill_price(pending[cost_col])
+                    if "COST_MXN_PROD" in pending.columns:
+                        _fill_price(pending["COST_MXN_PROD"])
                     pending = pending.drop(
                         columns=[col for col in ["PRICE_MXN_PROD", "COST_MXN_PROD"] if col in pending.columns]
                     )
+
+            _assert_unique_columns(pending, "pedidos pending")
 
             pending["PRICE_MXN"] = pd.to_numeric(pending["PRICE_MXN"], errors="coerce").fillna(0)
             if price_missing or pending["PRICE_MXN"].eq(0).all():

@@ -98,7 +98,6 @@ def set_theme(theme: str) -> None:
         raise ValueError("theme must be 'light' or 'dark'")
     st.session_state["theme"] = normalized
     st.query_params["theme"] = normalized
-    st.rerun()
 
 
 def apply_theme_css(theme: str) -> None:
@@ -286,6 +285,18 @@ def apply_theme_css(theme: str) -> None:
             [data-testid="stDataFrame"] tbody tr td {{
                 color: var(--fg);
                 border-bottom: 1px solid var(--border);
+            }}
+
+            [data-testid="stAlert"],
+            div[role="alert"] {{
+                background: var(--card) !important;
+                border: 1px solid var(--border) !important;
+                color: var(--fg) !important;
+                border-radius: 12px;
+            }}
+            [data-testid="stAlert"] *,
+            div[role="alert"] * {{
+                color: var(--fg) !important;
             }}
 
             .stSelectbox > div > div,

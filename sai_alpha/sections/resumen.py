@@ -226,7 +226,11 @@ def render(
 
     st.markdown(f"### {pending_title}")
     if not show_pending:
-        st.info("Pedidos por surtir se muestra solo en modo mensual o periodo actual.")
+        st.info(
+            "En este periodo no hay pedidos por surtir para mostrar.\n"
+            "En la demo, normalmente aparecen en meses recientes o en el periodo actual "
+            "(por el modo en que se cargan los datos)."
+        )
     else:
         pending = aggregates.get("pedidos_pending", pd.DataFrame())
         if pending.empty:

@@ -27,14 +27,16 @@ def render(bundle, ventas) -> None:
     render_page_header("Configuración", subtitle="Tema y diagnóstico de datos")
 
     st.markdown("### Apariencia")
-    st.radio(
+    selected_theme = st.radio(
         "Tema",
         ["light", "dark"],
         format_func=lambda value: "Claro" if value == "light" else "Oscuro",
-        key="theme",
+        index=0 if st.session_state.get("theme", "dark") == "light" else 1,
+        key="theme_radio",
         horizontal=True,
-        on_change=lambda: set_theme(st.session_state.get("theme", "dark")),
     )
+    if selected_theme != st.session_state.get("theme", "dark"):
+        set_theme(selected_theme)
     col1, col2 = st.columns(2)
     with col1:
         st.color_picker("Color primario", key="theme_primary")

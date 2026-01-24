@@ -5,12 +5,12 @@ from pathlib import Path
 import importlib.util
 
 import pandas as pd
-import plotly.io as pio
 import streamlit as st
 
 from sai_alpha import normalize as normalize_utils
 from sai_alpha.etl import DataBundle, enrich_pedidos, enrich_sales, load_data, resolve_dbf_dir
 from sai_alpha.formatting import fmt_int, fmt_money
+from sai_alpha.theme import apply_global_css, apply_plotly_theme, get_theme_config
 from sai_alpha.schema import DEFAULT_TEXT
 
 DATA_DIR = resolve_dbf_dir()
@@ -163,138 +163,16 @@ def validate_bundle(bundle: DataBundle) -> DataBundle:
 
 
 def apply_theme() -> None:
-    primary = st.session_state.get("theme_primary", "#0f5132")
-    accent = st.session_state.get("theme_accent", "#198754")
     density = st.session_state.get("table_density", "Confortable")
     theme_mode = st.session_state.get("theme_mode", "Claro")
     st.session_state["sidebar_header_rendered"] = False
     row_height = {"Compacta": 26, "Confortable": 34, "Amplia": 42}.get(density, 34)
     st.session_state["row_height"] = row_height
-
-    is_dark = theme_mode == "Oscuro"
-    app_bg = "#0f1116" if is_dark else "#ffffff"
-    sidebar_bg = "#11151c" if is_dark else "#f8f9fa"
-    card_bg = "#1c2129" if is_dark else "#f8f9fa"
-    border_color = "#2c3340" if is_dark else "#e9ecef"
-    text_color = "#f8f9fa" if is_dark else "#212529"
-    subtitle_color = "#adb5bd" if is_dark else "#6c757d"
-    title_color = accent if is_dark else primary
-
-    st.markdown(
-        f"""
-        <style>
-            #MainMenu {{ visibility: hidden; }}
-            header {{ visibility: hidden; }}
-            footer {{ visibility: hidden; }}
-            [data-testid="stToolbar"] {{ visibility: hidden; height: 0; }}
-            [data-testid="stStatusWidget"] {{ visibility: hidden; }}
-            [data-testid="stDecoration"] {{ visibility: hidden; }}
-            [data-testid="stDeployButton"] {{ display: none; }}
-            .app-header {{
-                font-weight: 700;
-                font-size: 1.4rem;
-                color: {title_color};
-                margin-bottom: 0.25rem;
-            }}
-            .app-subtitle {{
-                color: {subtitle_color};
-                margin-top: 0;
-            }}
-            .top-header {{
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 1rem;
-                padding: 0.75rem 1rem;
-                border-radius: 12px;
-                background: {card_bg};
-                border: 1px solid {border_color};
-                margin-bottom: 1.5rem;
-            }}
-            .top-header-title {{
-                font-weight: 700;
-                font-size: 1.3rem;
-                color: {title_color};
-            }}
-            .top-header-sub {{
-                color: {subtitle_color};
-                font-size: 0.9rem;
-                margin-top: 0.15rem;
-            }}
-            .status-pills {{
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.5rem;
-                justify-content: flex-end;
-            }}
-            .status-pill {{
-                background: {app_bg};
-                border: 1px solid {border_color};
-                border-radius: 999px;
-                padding: 0.35rem 0.75rem;
-                font-size: 0.8rem;
-                color: {text_color};
-                box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-            }}
-            [data-testid="stMetricValue"] {{
-                color: {primary};
-            }}
-            [data-testid="stMetricDelta"] {{
-                color: {accent};
-            }}
-            .section-title {{
-                border-left: 4px solid {accent};
-                padding-left: 0.6rem;
-                font-weight: 600;
-                font-size: 1.1rem;
-            }}
-            .sidebar-title {{
-                font-weight: 700;
-                font-size: 1.05rem;
-                color: {title_color};
-                margin-bottom: 0.1rem;
-            }}
-            .sidebar-subtitle {{
-                color: {subtitle_color};
-                font-size: 0.85rem;
-                margin-top: 0;
-            }}
-            .sidebar-theme {{
-                color: {text_color};
-                font-size: 0.8rem;
-                margin-top: 0.35rem;
-                margin-bottom: 0.1rem;
-            }}
-            .stApp {{
-                background-color: {app_bg};
-                color: {text_color};
-            }}
-            [data-testid="stSidebar"] {{
-                background-color: {sidebar_bg};
-            }}
-            [data-testid="stSidebar"] .stMarkdown,
-            [data-testid="stSidebar"] label,
-            [data-testid="stSidebar"] .stCaption {{
-                color: {text_color};
-            }}
-            [data-testid="stSidebarNav"],
-            [data-testid="stSidebarNavItems"],
-            [data-testid="stSidebarNavSeparator"] {{
-                display: none;
-            }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.session_state["plotly_colors"] = [accent, primary, "#2c3e50", "#6f42c1", "#fd7e14"]
-    pio.templates["sai_alpha"] = dict(
-        layout=dict(
-            colorway=st.session_state["plotly_colors"],
-            font=dict(family="Inter, sans-serif"),
-            hovermode="x unified",
-        )
-    )
-    pio.templates.default = "sai_alpha"
+    theme_cfg = get_theme_config(theme_mode)
+    st.session_state["theme_cfg"] = theme_cfg
+    st.session_state["plotly_colors"] = theme_cfg["palette"]
+    apply_global_css(theme_cfg)
+    apply_plotly_theme(theme_cfg)
 
 
 def render_page_nav(current_page: str) -> None:
@@ -333,7 +211,6 @@ def render_sidebar_header() -> None:
         horizontal=True,
         label_visibility="collapsed",
     )
-    st.sidebar.divider()
     st.session_state["sidebar_header_rendered"] = True
 
 

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
+
+import plotly.express as px
 
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
-from sai_alpha.ui import build_time_series, export_buttons, plotly_colors, render_page_header, table_height
+from sai_alpha.ui import build_time_series, export_buttons, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
@@ -75,11 +76,68 @@ def render(filters: FilterState, aggregates: dict) -> None:
             x="ORDER_DATE",
             y="PENDING_VALUE",
             markers=True,
-            color_discrete_sequence=plotly_colors(),
+            labels={"ORDER_DATE": "Periodo", "PENDING_VALUE": "Monto pendiente"},
         )
         fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
         fig.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Monto: %{y:,.2f}<extra></extra>")
+        fig.update_yaxes(tickformat=",.2f")
         st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+    st.markdown("### Pendientes por tipo de orden")
+    if "TIPO_ORDEN" in pending.columns:
+        by_type = pending.groupby("TIPO_ORDEN")["QTY_PENDING"].sum().reset_index()
+        fig_type = px.bar(
+            by_type,
+            x="TIPO_ORDEN",
+            y="QTY_PENDING",
+            labels={"TIPO_ORDEN": "Tipo de orden", "QTY_PENDING": "Unidades pendientes"},
+        )
+        fig_type.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_type.update_traces(hovertemplate="%{x}<br>Unidades: %{y:,.0f}<extra></extra>")
+        st.plotly_chart(fig_type, use_container_width=True)
+    else:
+        st.info("No hay tipo de orden disponible para graficar.")
+
+    st.divider()
+    st.markdown("### Valor pendiente por categoría o marca")
+    category_col = "CATEGORY" if "CATEGORY" in pending.columns else "BRAND" if "BRAND" in pending.columns else None
+    if category_col:
+        by_category = (
+            pending.groupby(category_col)["PENDING_VALUE"]
+            .sum()
+            .reset_index()
+            .sort_values("PENDING_VALUE", ascending=False)
+            .head(12)
+        )
+        fig_category = px.bar(
+            by_category,
+            x=category_col,
+            y="PENDING_VALUE",
+            labels={category_col: "Categoría/Marca", "PENDING_VALUE": "Monto pendiente"},
+        )
+        fig_category.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_category.update_traces(hovertemplate="%{x}<br>Monto: %{y:,.2f}<extra></extra>")
+        fig_category.update_yaxes(tickformat=",.2f")
+        st.plotly_chart(fig_category, use_container_width=True)
+    else:
+        st.info("No hay categoría o marca disponible para agrupar.")
+
+    st.divider()
+    st.markdown("### Pendientes por estatus")
+    if "STATUS" in pending.columns:
+        status_summary = pending.groupby("STATUS")["QTY_PENDING"].sum().reset_index()
+        fig_status = px.bar(
+            status_summary,
+            x="STATUS",
+            y="QTY_PENDING",
+            labels={"STATUS": "Estatus", "QTY_PENDING": "Unidades pendientes"},
+        )
+        fig_status.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_status.update_traces(hovertemplate="%{x}<br>Unidades: %{y:,.0f}<extra></extra>")
+        st.plotly_chart(fig_status, use_container_width=True)
+    else:
+        st.info("No hay estatus disponible para agrupar.")
 
     st.divider()
     st.markdown("### Exportar")

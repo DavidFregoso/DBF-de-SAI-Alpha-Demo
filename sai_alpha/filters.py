@@ -18,9 +18,9 @@ class FilterState:
     end_date: date
     granularity: str
     currency_mode: str
-    period_mode: str
-    range_mode: str
+    period_type: str
     period_label: str
+    period_selection_label: str | None
     brands: list[str]
     categories: list[str]
     vendors: list[str]
@@ -149,8 +149,7 @@ def _year_range_from_selection(year: int) -> tuple[date, date]:
 
 
 def _format_week_label(week: int, year: int) -> str:
-    start, end = _week_range_from_selection(year, week)
-    return f"Semana {int(week):02d} ({start.isoformat()} a {end.isoformat()})"
+    return f"Semana {int(week):02d} - {int(year)}"
 
 
 def _format_month_label(month: int, year: int) -> str:
@@ -169,111 +168,35 @@ def _format_month_label(month: int, year: int) -> str:
         "Noviembre",
         "Diciembre",
     ]
-    start, end = _month_range_from_selection(year, month)
-    return f"{month_names[int(month)]} {int(year)} ({start.isoformat()} a {end.isoformat()})"
+    return f"{month_names[int(month)]} {int(year)}"
 
 
 def _format_year_label(year: int) -> str:
-    start, end = _year_range_from_selection(year)
-    return f"{year} ({start.isoformat()} a {end.isoformat()})"
+    return f"{year}"
 
 
-def normalize_period(
-    filters: dict[str, object],
-    periods: dict[str, object],
-) -> tuple[date, date, str, str]:
-    period_mode = str(filters["period_mode"])
-    range_mode = str(filters["range_mode"])
-    granularity_choice = str(filters["granularity"])
-
-    if period_mode == "Último periodo disponible":
-        if range_mode == "Semana":
-            start_date, end_date = _week_range_from_selection(
-                int(periods["latest_week_year"]), int(periods["latest_week"])
-            )
-            label = _format_week_label(int(periods["latest_week"]), int(periods["latest_week_year"]))
-        elif range_mode == "Mes":
-            start_date, end_date = _month_range_from_selection(
-                int(periods["latest_month_year"]), int(periods["latest_month"])
-            )
-            label = _format_month_label(int(periods["latest_month"]), int(periods["latest_month_year"]))
-        elif range_mode == "Año":
-            start_date, end_date = _year_range_from_selection(int(periods["latest_year"]))
-            label = _format_year_label(int(periods["latest_year"]))
-        else:
-            end_date = periods["max_date"]
-            start_date = max(periods["min_date"], end_date - timedelta(days=29))
-            label = f"{start_date.isoformat()} a {end_date.isoformat()}"
-    else:
-        if range_mode == "Semana":
-            year = int(filters["period_week_year"])
-            week = int(filters["period_week"])
-            start_date, end_date = _week_range_from_selection(year, week)
-            label = _format_week_label(week, year)
-        elif range_mode == "Mes":
-            year = int(filters["period_month_year"])
-            month = int(filters["period_month"])
-            start_date, end_date = _month_range_from_selection(year, month)
-            label = _format_month_label(month, year)
-        elif range_mode == "Año":
-            year = int(filters["period_year"])
-            start_date, end_date = _year_range_from_selection(year)
-            label = _format_year_label(year)
-        else:
-            start_date = filters["date_start"]
-            end_date = filters["date_end"]
-            if isinstance(start_date, datetime):
-                start_date = start_date.date()
-            if isinstance(end_date, datetime):
-                end_date = end_date.date()
-            label = f"{start_date.isoformat()} a {end_date.isoformat()}"
-
-    if start_date > end_date:
-        start_date, end_date = end_date, start_date
-        if range_mode == "Rango fechas":
-            label = f"{start_date.isoformat()} a {end_date.isoformat()}"
-        st.session_state["period_swap_warning"] = True
-    else:
-        st.session_state["period_swap_warning"] = False
-
-    days_range = max(1, (end_date - start_date).days + 1)
-    recommended = _recommended_granularity(days_range)
-    adjusted_granularity = granularity_choice if granularity_choice != "Auto" else recommended
-
-    notes: list[tuple[str, str]] = []
-    if granularity_choice == "Auto":
-        notes.append(("info", f"Granularidad auto ajustada a {recommended.lower()}."))
-    if range_mode == "Semana" and adjusted_granularity not in {"Semanal", "Diario"}:
-        adjusted_granularity = "Semanal"
-        notes.append(("warning", "Granularidad ajustada a semanal para el rango semanal."))
-    if range_mode == "Mes" and adjusted_granularity == "Anual":
-        adjusted_granularity = "Mensual"
-        notes.append(("warning", "Granularidad ajustada a mensual para el rango mensual."))
-    if range_mode == "Mes" and adjusted_granularity == "Semanal":
-        notes.append(("info", "Granularidad semanal aplicada dentro del mes seleccionado."))
-    if granularity_choice not in {"Auto", adjusted_granularity}:
-        notes.append(("warning", f"Granularidad ajustada a {adjusted_granularity.lower()} por el rango."))
-
-    current_section = st.session_state.get("nav_section") or st.session_state.get("page_nav")
-    if current_section == "Pedidos por Surtir" and adjusted_granularity != "Mensual":
-        adjusted_granularity = "Mensual"
-        notes.append(("info", "Pedidos por surtir se analiza con granularidad mensual."))
-
-    st.session_state["period_notes"] = notes
-    st.session_state["normalized_start_date"] = start_date
-    st.session_state["normalized_end_date"] = end_date
-    st.session_state["period_label"] = label
-    st.session_state["normalized_granularity"] = adjusted_granularity
-
-    return start_date, end_date, label, adjusted_granularity
+def _latest_available_period(periods: dict[str, object]) -> tuple[date, date, str]:
+    if periods.get("months_by_year"):
+        year = int(periods["latest_month_year"])
+        month = int(periods["latest_month"])
+        start_date, end_date = _month_range_from_selection(year, month)
+        return start_date, end_date, _format_month_label(month, year)
+    if periods.get("weeks_by_year"):
+        year = int(periods["latest_week_year"])
+        week = int(periods["latest_week"])
+        start_date, end_date = _week_range_from_selection(year, week)
+        return start_date, end_date, _format_week_label(week, year)
+    end_date = periods["max_date"]
+    start_date = max(periods["min_date"], end_date - timedelta(days=29))
+    return start_date, end_date, f"{start_date.isoformat()} a {end_date.isoformat()}"
 
 
 def _recommended_granularity(days_range: int) -> str:
-    if days_range < 45:
+    if days_range <= 31:
+        return "Diario"
+    if days_range <= 120:
         return "Semanal"
-    if days_range <= 400:
-        return "Mensual"
-    return "Anual"
+    return "Mensual"
 
 
 def _normalize_filter_list(values: list[str] | None) -> tuple[str, ...]:
@@ -318,134 +241,139 @@ def build_filter_key(
 
 def build_global_filters(df_sales: pd.DataFrame) -> dict[str, object]:
     periods = compute_available_periods(df_sales)
-    st.session_state.setdefault("period_mode", "Último periodo disponible")
-    st.session_state.setdefault("range_mode", "Mes")
+    st.session_state.setdefault("period_type", "Último periodo disponible (recomendado)")
     st.session_state.setdefault("granularity", "Auto")
     st.session_state.setdefault("currency_view", "MXN")
-    st.session_state.setdefault("period_year", periods["latest_year"])
-    st.session_state.setdefault("period_month", periods["latest_month"])
-    st.session_state.setdefault("period_month_year", periods["latest_month_year"])
-    st.session_state.setdefault("period_week", periods["latest_week"])
-    st.session_state.setdefault("period_week_year", periods["latest_week_year"])
-    st.session_state.setdefault("date_start", periods["min_date"])
-    st.session_state.setdefault("date_end", periods["max_date"])
+    st.session_state.setdefault("selected_year", periods["latest_year"])
+    st.session_state.setdefault("selected_month", periods["latest_month"])
+    st.session_state.setdefault("selected_month_year", periods["latest_month_year"])
+    st.session_state.setdefault("selected_week", periods["latest_week"])
+    st.session_state.setdefault("selected_week_year", periods["latest_week_year"])
+    st.session_state.setdefault("range_start", periods["min_date"])
+    st.session_state.setdefault("range_end", periods["max_date"])
+    st.session_state.setdefault("last_valid_range", (periods["min_date"], periods["max_date"]))
 
-    period_mode = st.sidebar.selectbox(
-        "Periodo",
-        ["Último periodo disponible", "Personalizado"],
-        key="period_mode",
+    st.sidebar.markdown("**Periodo**")
+    period_type = st.sidebar.selectbox(
+        "Tipo de periodo",
+        [
+            "Último periodo disponible (recomendado)",
+            "Mes",
+            "Semana",
+            "Año",
+            "Rango de fechas",
+        ],
+        key="period_type",
     )
 
-    range_mode = st.sidebar.selectbox(
-        "Rango",
-        ["Semana", "Mes", "Rango fechas", "Año"],
-        key="range_mode",
-    )
+    period_selection_label = None
+    if period_type == "Último periodo disponible (recomendado)":
+        start_date, end_date, period_selection_label = _latest_available_period(periods)
+    elif period_type == "Mes":
+        month_options = [
+            (int(year), int(month))
+            for year in sorted(periods["months_by_year"])
+            for month in periods["months_by_year"][year]
+        ]
+        if not month_options:
+            month_options = [(int(periods["latest_month_year"]), int(periods["latest_month"]))]
+        default_option = (int(st.session_state["selected_month_year"]), int(st.session_state["selected_month"]))
+        if default_option not in month_options:
+            default_option = month_options[-1]
+        st.session_state.setdefault("selected_month_option", default_option)
+        selection = st.sidebar.selectbox(
+            "Mes",
+            month_options,
+            key="selected_month_option",
+            format_func=lambda value: _format_month_label(value[1], value[0]),
+        )
+        st.session_state["selected_month_year"] = selection[0]
+        st.session_state["selected_month"] = selection[1]
+        start_date, end_date = _month_range_from_selection(selection[0], selection[1])
+        period_selection_label = _format_month_label(selection[1], selection[0])
+    elif period_type == "Semana":
+        week_options = [
+            (int(year), int(week))
+            for year in sorted(periods["weeks_by_year"])
+            for week in periods["weeks_by_year"][year]
+        ]
+        if not week_options:
+            week_options = [(int(periods["latest_week_year"]), int(periods["latest_week"]))]
+        default_option = (int(st.session_state["selected_week_year"]), int(st.session_state["selected_week"]))
+        if default_option not in week_options:
+            default_option = week_options[-1]
+        st.session_state.setdefault("selected_week_option", default_option)
+        selection = st.sidebar.selectbox(
+            "Semana",
+            week_options,
+            key="selected_week_option",
+            format_func=lambda value: _format_week_label(value[1], value[0]),
+        )
+        st.session_state["selected_week_year"] = selection[0]
+        st.session_state["selected_week"] = selection[1]
+        start_date, end_date = _week_range_from_selection(selection[0], selection[1])
+        period_selection_label = _format_week_label(selection[1], selection[0])
+    elif period_type == "Año":
+        years = periods["years"] or [periods["latest_year"]]
+        selection = st.sidebar.selectbox("Año", years, key="selected_year", format_func=_format_year_label)
+        start_date, end_date = _year_range_from_selection(int(selection))
+        period_selection_label = _format_year_label(int(selection))
+    else:
+        start_input = st.sidebar.date_input(
+            "Inicio",
+            key="range_start",
+            min_value=periods["min_date"],
+            max_value=periods["max_date"],
+        )
+        end_input = st.sidebar.date_input(
+            "Fin",
+            key="range_end",
+            min_value=periods["min_date"],
+            max_value=periods["max_date"],
+        )
+        if st.sidebar.button("Aplicar rango", key="apply_date_range"):
+            if end_input < start_input:
+                st.sidebar.error("La fecha final no puede ser menor a la inicial.")
+            else:
+                st.session_state["last_valid_range"] = (start_input, end_input)
+        last_valid_range = st.session_state.get("last_valid_range", (start_input, end_input))
+        start_date, end_date = last_valid_range
 
-    currency_view = st.sidebar.selectbox(
-        "Moneda",
-        ["MXN", "USD"],
-        key="currency_view",
-    )
-
+    currency_view = st.sidebar.selectbox("Moneda", ["MXN", "USD"], key="currency_view")
     granularity_choice = st.sidebar.selectbox(
         "Granularidad",
-        ["Auto", "Diario", "Semanal", "Mensual", "Anual"],
+        ["Auto", "Diario", "Semanal", "Mensual"],
         key="granularity",
     )
 
     if st.sidebar.button("Actualizar ahora", key="refresh_now"):
         refreshed_at = datetime.now()
-        st.session_state["last_refresh_at"] = refreshed_at
-        st.toast(f"Datos actualizados (simulación) – {refreshed_at:%d/%m/%Y %H:%M}")
+        st.session_state["last_refresh_ts"] = refreshed_at
+        st.toast(f"Datos actualizados: {refreshed_at:%d/%m/%Y %H:%M}")
 
-    last_refresh = st.session_state.get("last_refresh_at")
+    last_refresh = st.session_state.get("last_refresh_ts")
     if last_refresh:
         st.sidebar.caption(f"Última actualización: {last_refresh:%d/%m/%Y %H:%M}")
     else:
         st.sidebar.caption("Última actualización: pendiente")
 
-    if period_mode == "Personalizado":
-        if range_mode == "Semana":
-            year = st.sidebar.selectbox("Año", periods["years"], key="period_week_year")
-            weeks = periods["weeks_by_year"].get(int(year), [periods["latest_week"]])
-            if st.session_state.get("period_week") not in weeks:
-                st.session_state["period_week"] = weeks[-1]
-            st.sidebar.selectbox(
-                "Semana",
-                weeks,
-                key="period_week",
-                format_func=lambda value, selected_year=int(year): _format_week_label(
-                    int(value), int(selected_year)
-                ),
-            )
-        elif range_mode == "Mes":
-            year = st.sidebar.selectbox("Año", periods["years"], key="period_month_year")
-            months = periods["months_by_year"].get(int(year), [periods["latest_month"]])
-            if st.session_state.get("period_month") not in months:
-                st.session_state["period_month"] = months[-1]
-            st.sidebar.selectbox(
-                "Mes",
-                months,
-                format_func=lambda value, selected_year=int(year): _format_month_label(
-                    int(value), int(selected_year)
-                ),
-                key="period_month",
-            )
-        elif range_mode == "Año":
-            st.sidebar.selectbox(
-                "Año",
-                periods["years"],
-                key="period_year",
-                format_func=_format_year_label,
-            )
-        else:
-            date_start, date_end = st.sidebar.date_input(
-                "Rango",
-                value=(st.session_state["date_start"], st.session_state["date_end"]),
-                min_value=periods["min_date"],
-                max_value=periods["max_date"],
-            )
-            st.session_state["date_start"] = date_start
-            st.session_state["date_end"] = date_end
+    days_range = max(1, (end_date - start_date).days + 1)
+    recommended = _recommended_granularity(days_range)
+    granularity = recommended if granularity_choice == "Auto" else granularity_choice
 
-    start_date, end_date, label, granularity = normalize_period(
-        {
-            "period_mode": period_mode,
-            "range_mode": range_mode,
-            "granularity": granularity_choice,
-            "period_week_year": st.session_state["period_week_year"],
-            "period_week": st.session_state["period_week"],
-            "period_month_year": st.session_state["period_month_year"],
-            "period_month": st.session_state["period_month"],
-            "period_year": st.session_state["period_year"],
-            "date_start": st.session_state["date_start"],
-            "date_end": st.session_state["date_end"],
-        },
-        periods,
-    )
-
-    if st.session_state.get("period_swap_warning"):
-        st.sidebar.warning("La fecha de inicio era mayor que la final; se ajustó automáticamente.")
-
-    notes = st.session_state.get("period_notes", [])
-    for level, message in notes:
-        if level == "warning":
-            st.sidebar.warning(message)
-        else:
-            st.sidebar.info(message)
-
-    st.sidebar.caption(f"Periodo: {label}")
+    period_label = period_selection_label or period_type
     st.sidebar.caption(f"Del: {start_date.isoformat()}  Al: {end_date.isoformat()}")
+    if period_selection_label:
+        st.sidebar.caption(f"Periodo seleccionado: {period_selection_label}")
 
     return {
         "start_date": start_date,
         "end_date": end_date,
         "granularity": granularity,
         "currency_view": currency_view,
-        "period_mode": period_mode,
-        "range_mode": range_mode,
-        "period_label": label,
+        "period_type": period_type,
+        "period_label": period_label,
+        "period_selection_label": period_selection_label,
     }
 
 
@@ -654,6 +582,60 @@ def cached_apply_order_filters(
     )
 
 
+@st.cache_data(show_spinner=False)
+def filter_data(
+    ventas: pd.DataFrame,
+    pedidos: pd.DataFrame | None,
+    clientes: pd.DataFrame,
+    productos: pd.DataFrame,
+    start_date: date,
+    end_date: date,
+    brands: tuple[str, ...],
+    categories: tuple[str, ...],
+    vendors: tuple[str, ...],
+    sale_origins: tuple[str, ...],
+    client_origins: tuple[str, ...],
+    recommendation_sources: tuple[str, ...],
+    invoice_types: tuple[str, ...],
+    order_types: tuple[str, ...],
+    order_statuses: tuple[str, ...] | None,
+    filter_key: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
+    ventas_filtrado = apply_sales_filters(
+        ventas,
+        start_date,
+        end_date,
+        brands,
+        categories,
+        vendors,
+        sale_origins,
+        client_origins,
+        recommendation_sources,
+        invoice_types,
+        order_types,
+    )
+    pedidos_filtrado = None
+    if pedidos is not None and not pedidos.empty:
+        pedidos_filtrado = apply_order_filters(
+            pedidos,
+            start_date,
+            end_date,
+            vendors,
+            sale_origins,
+            order_types,
+            order_statuses,
+        )
+    clientes_filtrado = clientes.copy()
+    if not ventas_filtrado.empty and "CLIENT_ID" in ventas_filtrado.columns and "CLIENT_ID" in clientes_filtrado.columns:
+        clientes_filtrado = clientes_filtrado[clientes_filtrado["CLIENT_ID"].isin(ventas_filtrado["CLIENT_ID"].unique())]
+
+    productos_filtrado = productos.copy()
+    if not ventas_filtrado.empty and "PRODUCT_ID" in ventas_filtrado.columns and "PRODUCT_ID" in productos_filtrado.columns:
+        productos_filtrado = productos_filtrado[productos_filtrado["PRODUCT_ID"].isin(ventas_filtrado["PRODUCT_ID"].unique())]
+
+    return ventas_filtrado, clientes_filtrado, productos_filtrado, pedidos_filtrado
+
+
 def apply_global_filters(
     bundle: DataBundle,
     filters: FilterState,
@@ -725,9 +707,12 @@ def build_filter_state(
     order_types = _normalize_filter_list(advanced_filters.get("order_types"))
     order_statuses = _normalize_filter_list(advanced_filters.get("order_statuses"))
 
-    with perf_logger("apply_sales_filters"):
-        sales_filtered = cached_apply_sales_filters(
+    with perf_logger("filter_data"):
+        sales_filtered, clients_filtered, products_filtered, pedidos_filtered = filter_data(
             ventas_normalized,
+            pedidos,
+            bundle.clientes.copy() if bundle.clientes is not None else pd.DataFrame(),
+            bundle.productos.copy() if bundle.productos is not None else pd.DataFrame(),
             global_filters["start_date"],
             global_filters["end_date"],
             brands,
@@ -738,22 +723,9 @@ def build_filter_state(
             recommendation_sources,
             invoice_types,
             order_types,
+            order_statuses if order_statuses else None,
             filter_key,
         )
-
-    pedidos_filtered = None
-    if pedidos is not None and not pedidos.empty:
-        with perf_logger("apply_order_filters"):
-            pedidos_filtered = cached_apply_order_filters(
-                pedidos,
-                global_filters["start_date"],
-                global_filters["end_date"],
-                vendors,
-                sale_origins,
-                order_types,
-                order_statuses if order_statuses else None,
-                filter_key,
-            )
 
     fx_average = None
     if "USD_MXN_RATE" in ventas_normalized.columns:
@@ -769,9 +741,9 @@ def build_filter_state(
         end_date=global_filters["end_date"],
         granularity=str(global_filters["granularity"]),
         currency_mode=str(global_filters["currency_view"]),
-        period_mode=str(global_filters["period_mode"]),
-        range_mode=str(global_filters["range_mode"]),
+        period_type=str(global_filters["period_type"]),
         period_label=str(global_filters["period_label"]),
+        period_selection_label=global_filters.get("period_selection_label"),
         brands=list(brands),
         categories=list(categories),
         vendors=list(vendors),
@@ -782,8 +754,8 @@ def build_filter_state(
         order_types=list(order_types),
         order_statuses=list(order_statuses) if order_statuses else None,
         sales=sales_filtered,
-        clients=bundle.clientes.copy() if bundle.clientes is not None else pd.DataFrame(),
-        products=bundle.productos.copy() if bundle.productos is not None else pd.DataFrame(),
+        clients=clients_filtered,
+        products=products_filtered,
         pedidos=pedidos_filtered,
         currency_label=currency_label,
         revenue_column=revenue_column,
@@ -791,15 +763,5 @@ def build_filter_state(
         fx_average=fx_average,
         filter_key=filter_key,
     )
-
-    ventas_filtrado, clientes_filtrado, productos_filtrado, pedidos_filtrado = apply_global_filters(
-        bundle,
-        filter_state,
-    )
-
-    filter_state.sales = ventas_filtrado
-    filter_state.clients = clientes_filtrado
-    filter_state.products = productos_filtrado
-    filter_state.pedidos = pedidos_filtrado
 
     return filter_state

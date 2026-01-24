@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
+
+import plotly.express as px
 
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
-from sai_alpha.ui import export_buttons, plotly_colors, render_page_header, table_height
+from sai_alpha.ui import export_buttons, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
@@ -67,28 +68,57 @@ def render(filters: FilterState, aggregates: dict) -> None:
         x="revenue",
         y="SELLER_NAME",
         orientation="h",
-        color_discrete_sequence=plotly_colors(),
+        labels={"SELLER_NAME": "Vendedor", "revenue": f"Ventas ({filters.currency_label})"},
     )
     fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+    fig.update_traces(hovertemplate="%{y}<br>%{x:,.2f}<extra></extra>")
+    fig.update_xaxes(tickformat=",.2f")
     st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
-    st.markdown("### Tendencia por vendedor")
-    selected_vendor = st.selectbox("Vendedor", seller_summary["SELLER_NAME"].unique().tolist())
+    st.markdown("### Pedidos por vendedor")
+    orders_by_seller = seller_summary.sort_values("orders", ascending=False).head(15)
+    fig_orders = px.bar(
+        orders_by_seller,
+        x="SELLER_NAME",
+        y="orders",
+        labels={"SELLER_NAME": "Vendedor", "orders": "Pedidos"},
+    )
+    fig_orders.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+    fig_orders.update_traces(hovertemplate="%{x}<br>Pedidos: %{y:,.0f}<extra></extra>")
+    st.plotly_chart(fig_orders, use_container_width=True)
+
+    st.divider()
+    st.markdown("### Participación de ventas por vendedor")
+    fig_share = px.pie(
+        seller_summary.head(10),
+        values="revenue",
+        names="SELLER_NAME",
+        hole=0.5,
+    )
+    fig_share.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+    fig_share.update_traces(hovertemplate="%{label}<br>%{value:,.2f}<extra></extra>")
+    st.plotly_chart(fig_share, use_container_width=True)
+
+    st.divider()
+    st.markdown("### Tendencia Top 5 vendedores")
     seller_trend = aggregates.get("seller_trend", pd.DataFrame())
     if seller_trend.empty:
         st.info("No hay suficiente información para construir la tendencia.")
         return
-    series = seller_trend[seller_trend["SELLER_NAME"] == selected_vendor]
+    top_sellers = seller_summary.head(5)["SELLER_NAME"].tolist()
+    trend_top = seller_trend[seller_trend["SELLER_NAME"].isin(top_sellers)]
     fig_trend = px.line(
-        series,
+        trend_top,
         x="SALE_DATE",
         y=filters.revenue_column,
+        color="SELLER_NAME",
         markers=True,
-        color_discrete_sequence=plotly_colors(),
+        labels={"SALE_DATE": "Periodo", filters.revenue_column: f"Ventas ({filters.currency_label})"},
     )
     fig_trend.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-    fig_trend.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Ventas: %{y:,.2f}<extra></extra>")
+    fig_trend.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>%{y:,.2f}<extra></extra>")
+    fig_trend.update_yaxes(tickformat=",.2f")
     st.plotly_chart(fig_trend, use_container_width=True)
 
     st.divider()

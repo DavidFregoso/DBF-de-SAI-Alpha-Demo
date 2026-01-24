@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
+import plotly.express as px
+from sai_alpha.charts import invoice_type_donut, orders_and_revenue_trend, stacked_channel_over_time
 from sai_alpha.formatting import fmt_int, fmt_money, safe_metric
 from sai_alpha.filters import FilterState
-from sai_alpha.ui import export_buttons, plotly_colors, render_page_header, table_height
+from sai_alpha.ui import export_buttons, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
     render_page_header("Ventas", subtitle="Evolución, canales y marcas con foco comercial")
+    theme_cfg = st.session_state.get("theme_cfg", {})
 
     filtered = filters.sales
     if filtered.empty:
@@ -35,54 +37,94 @@ def render(filters: FilterState, aggregates: dict) -> None:
         safe_metric("Ticket promedio", fmt_money(ticket, filters.currency_label))
 
     st.divider()
-    tabs = st.tabs(["Tendencia", "Por canal", "Por marca"])
+    st.markdown("### Tendencia de ventas y pedidos")
+    order_col = "FACTURA_ID" if "FACTURA_ID" in filtered.columns else "SALE_ID"
+    fig_trend = orders_and_revenue_trend(
+        filtered,
+        "SALE_DATE",
+        filters.revenue_column,
+        order_col,
+        filters.currency_label,
+        filters.granularity,
+        theme_cfg,
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
 
-    with tabs[0]:
-        st.caption("Esto significa: cómo evoluciona la facturación en el periodo.")
-        series = aggregates.get("ventas_by_period", pd.DataFrame())
-        fig = px.line(
-            series,
-            x="SALE_DATE",
-            y=filters.revenue_column,
-            markers=True,
-            labels={"SALE_DATE": "Periodo", filters.revenue_column: f"Ventas ({filters.currency_label})"},
-            color_discrete_sequence=plotly_colors(),
+    st.divider()
+    st.markdown("### Ventas por canal a lo largo del tiempo")
+    if "ORIGEN_VENTA" in filtered.columns:
+        fig_channel = stacked_channel_over_time(
+            filtered,
+            "SALE_DATE",
+            "ORIGEN_VENTA",
+            filters.revenue_column,
+            filters.currency_label,
+            filters.granularity,
+            theme_cfg,
         )
-        fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-        fig.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>Ventas: %{y:,.2f}<extra></extra>")
-        st.plotly_chart(fig, use_container_width=True)
-
-    with tabs[1]:
-        st.caption("Esto significa: qué canales están generando más ventas.")
-        channel = aggregates.get("ventas_by_channel", pd.DataFrame())
-        if channel.empty:
-            channel = pd.DataFrame({"ORIGEN_VENTA": ["No disponible"], filters.revenue_column: [0]})
-        fig_channel = px.bar(
-            channel.sort_values(filters.revenue_column, ascending=False),
-            x="ORIGEN_VENTA",
-            y=filters.revenue_column,
-            color_discrete_sequence=plotly_colors(),
-        )
-        fig_channel.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-        fig_channel.update_traces(hovertemplate="%{x}<br>Ventas: %{y:,.2f}<extra></extra>")
         st.plotly_chart(fig_channel, use_container_width=True)
+    else:
+        st.info("No hay origen de venta disponible para agrupar.")
 
-    with tabs[2]:
-        st.caption("Esto significa: marcas con mayor participación de ventas.")
-        if "BRAND" not in filtered.columns:
-            st.info("No hay información de marca disponible en este dataset.")
-        else:
-            brand = aggregates.get("ventas_by_brand", pd.DataFrame())
-            fig_brand = px.bar(
-                brand.sort_values(filters.revenue_column, ascending=False).head(12),
-                x=filters.revenue_column,
-                y="BRAND",
-                orientation="h",
-                color_discrete_sequence=plotly_colors(),
+    st.divider()
+    st.markdown("### Top marcas")
+    if "BRAND" in filtered.columns:
+        brand = aggregates.get("ventas_by_brand", pd.DataFrame())
+        fig_brand = px.bar(
+            brand.sort_values(filters.revenue_column, ascending=False).head(12),
+            x=filters.revenue_column,
+            y="BRAND",
+            orientation="h",
+            labels={"BRAND": "Marca", filters.revenue_column: f"Ventas ({filters.currency_label})"},
+        )
+        fig_brand.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_brand.update_traces(hovertemplate="%{y}<br>%{x:,.2f}<extra></extra>")
+        fig_brand.update_xaxes(tickformat=",.2f")
+        st.plotly_chart(fig_brand, use_container_width=True)
+    else:
+        st.info("No hay información de marca disponible en este dataset.")
+
+    st.divider()
+    st.markdown("### Tipo de factura")
+    if "TIPO_FACTURA" in filtered.columns:
+        fig_invoice = invoice_type_donut(
+            filtered,
+            "TIPO_FACTURA",
+            filters.revenue_column,
+            filters.currency_label,
+            theme_cfg,
+        )
+        st.plotly_chart(fig_invoice, use_container_width=True)
+    else:
+        st.info("No hay tipo de factura disponible.")
+
+    st.divider()
+    st.markdown("### Ticket promedio vs pedidos por cliente")
+    if "CLIENT_NAME" in filtered.columns:
+        client_summary = (
+            filtered.groupby("CLIENT_NAME")
+            .agg(
+                revenue=(filters.revenue_column, "sum"),
+                orders=(order_col, "nunique"),
             )
-            fig_brand.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-            fig_brand.update_traces(hovertemplate="%{y}<br>Ventas: %{x:,.2f}<extra></extra>")
-            st.plotly_chart(fig_brand, use_container_width=True)
+            .reset_index()
+        )
+        client_summary["ticket"] = client_summary["revenue"] / client_summary["orders"].replace(0, pd.NA)
+        client_summary = client_summary.sort_values("revenue", ascending=False).head(50)
+        fig_scatter = px.scatter(
+            client_summary,
+            x="orders",
+            y="ticket",
+            size="revenue",
+            hover_name="CLIENT_NAME",
+            labels={"orders": "Pedidos", "ticket": f"Ticket promedio ({filters.currency_label})"},
+        )
+        fig_scatter.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_scatter.update_traces(hovertemplate="%{hovertext}<br>Pedidos: %{x:,.0f}<br>Ticket: %{y:,.2f}")
+        fig_scatter.update_yaxes(tickformat=",.2f")
+        st.plotly_chart(fig_scatter, use_container_width=True)
+    else:
+        st.info("No hay clientes disponibles para construir el scatter de tickets.")
 
     st.divider()
     st.markdown("### Facturas / pedidos")

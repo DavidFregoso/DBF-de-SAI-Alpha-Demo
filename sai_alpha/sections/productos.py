@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
+import plotly.express as px
+import plotly.graph_objects as go
+
 from sai_alpha.etl import normalize_columns, resolve_dbf_dir
-from sai_alpha.formatting import fmt_int, fmt_money, fmt_num, safe_metric
+from sai_alpha.formatting import fmt_int, fmt_money, fmt_num, fmt_units, safe_metric
 from sai_alpha.filters import FilterState
 from sai_alpha.schema import ensure_inventory_columns, resolve_column
-from sai_alpha.ui import export_buttons, notify_once, plotly_colors, render_page_header, table_height
+from sai_alpha.ui import export_buttons, notify_once, render_page_header, table_height
 
 
 def render(filters: FilterState, aggregates: dict) -> None:
@@ -99,7 +101,7 @@ def render(filters: FilterState, aggregates: dict) -> None:
         )
 
     st.divider()
-    st.markdown("### Pareto Top 10 productos")
+    st.markdown("### Pareto de productos por facturación")
     product_col = resolve_column(filtered, ["PRODUCT_NAME", "PRODUCT_NAME_X", "PRODUCT_NAME_Y"], required=True)
     if not product_col:
         st.warning(
@@ -113,18 +115,109 @@ def render(filters: FilterState, aggregates: dict) -> None:
             .sum()
             .reset_index()
             .sort_values(filters.revenue_column, ascending=False)
+            .head(15)
+        )
+    if not pareto.empty:
+        pareto["cum_pct"] = pareto[filters.revenue_column].cumsum() / pareto[filters.revenue_column].sum() * 100
+        fig = go.Figure()
+        fig.add_trace(
+            go.Bar(
+                x=pareto[product_col],
+                y=pareto[filters.revenue_column],
+                name="Ventas",
+                hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=pareto[product_col],
+                y=pareto["cum_pct"],
+                mode="lines+markers",
+                name="% acumulado",
+                yaxis="y2",
+                hovertemplate="%{x}<br>% acumulado: %{y:.1f}%<extra></extra>",
+            )
+        )
+        fig.update_layout(
+            height=340,
+            margin=dict(l=20, r=20, t=40, b=20),
+            yaxis=dict(title=f"Ventas ({filters.currency_label})", tickformat=",.2f"),
+            yaxis2=dict(title="% acumulado", overlaying="y", side="right", tickformat=".0f"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+    st.markdown("### Top 10 productos por facturación")
+    if not pareto.empty and product_col:
+        fig_top_rev = px.bar(
+            pareto.head(10),
+            x=product_col,
+            y=filters.revenue_column,
+            labels={product_col: "Producto", filters.revenue_column: f"Ventas ({filters.currency_label})"},
+        )
+        fig_top_rev.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_top_rev.update_traces(hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>")
+        fig_top_rev.update_yaxes(tickformat=",.2f")
+        st.plotly_chart(fig_top_rev, use_container_width=True)
+
+    st.divider()
+    st.markdown("### Top 10 productos por unidades")
+    qty_col = resolve_column(filtered, ["QTY", "UNITS", "CANTIDAD", "PIEZAS", "UNITS_SOLD", "SOLD_UNITS"])
+    if qty_col and product_col:
+        top_units = (
+            filtered.groupby(product_col)[qty_col]
+            .sum()
+            .reset_index()
+            .sort_values(qty_col, ascending=False)
             .head(10)
         )
-    fig = px.bar(
-        pareto,
-        x=filters.revenue_column,
-        y=product_col or "PRODUCT_NAME",
-        orientation="h",
-        color_discrete_sequence=plotly_colors(),
-    )
-    fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-    fig.update_traces(hovertemplate="%{y}<br>Ventas: %{x:,.2f}<extra></extra>")
-    st.plotly_chart(fig, use_container_width=True)
+        fig_units = px.bar(
+            top_units,
+            x=product_col,
+            y=qty_col,
+            labels={product_col: "Producto", qty_col: "Unidades"},
+        )
+        fig_units.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_units.update_traces(hovertemplate="%{x}<br>Unidades: %{y:,.0f}<extra></extra>")
+        st.plotly_chart(fig_units, use_container_width=True)
+    else:
+        st.info("No hay unidades disponibles para el ranking.")
+
+    st.divider()
+    st.markdown("### Rotación vs inventario")
+    if inventory_available:
+        fig_scatter = px.scatter(
+            inventory,
+            x="STOCK_QTY",
+            y="units",
+            color="CATEGORY" if "CATEGORY" in inventory.columns else None,
+            size="inventory_value",
+            hover_name="PRODUCT_NAME",
+            labels={"STOCK_QTY": "Stock", "units": "Unidades"},
+        )
+        fig_scatter.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_scatter.update_traces(hovertemplate="%{hovertext}<br>Stock: %{x:,.0f}<br>Unidades: %{y:,.0f}")
+        st.plotly_chart(fig_scatter, use_container_width=True)
+    else:
+        st.info("No hay inventario suficiente para el scatter.")
+
+    st.divider()
+    st.markdown("### Inventario por categoría")
+    if inventory_available and "CATEGORY" in inventory.columns:
+        category_inv = inventory.groupby("CATEGORY")["inventory_value"].sum().reset_index()
+        fig_inv = px.bar(
+            category_inv,
+            x="CATEGORY",
+            y="inventory_value",
+            labels={"CATEGORY": "Categoría", "inventory_value": "Valor inventario"},
+        )
+        fig_inv.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+        fig_inv.update_traces(hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>")
+        fig_inv.update_yaxes(tickformat=",.2f")
+        st.plotly_chart(fig_inv, use_container_width=True)
+    else:
+        st.info("No hay categoría disponible para inventario.")
 
     st.divider()
     st.markdown("### Stock y venta mensual")
@@ -162,7 +255,20 @@ def render(filters: FilterState, aggregates: dict) -> None:
             return
         low_stock = inventory[inventory["STOCK_QTY"] <= inventory["MIN_STOCK"]].copy()
         if low_stock.empty:
-            st.info("No hay productos por agotarse con los datos actuales.")
+            fallback = inventory.sort_values("DAYS_INVENTORY", ascending=True).head(10).copy()
+            fallback["stock_fmt"] = fallback["STOCK_QTY"].map(fmt_int)
+            fallback["days_fmt"] = fallback["DAYS_INVENTORY"].map(fmt_units)
+            st.info("No hay alertas críticas. Se muestran los 10 productos con menor cobertura.")
+            st.dataframe(
+                fallback[["PRODUCT_NAME", "stock_fmt", "days_fmt"]],
+                use_container_width=True,
+                height=table_height(len(fallback)),
+                column_config={
+                    "PRODUCT_NAME": "Producto",
+                    "stock_fmt": st.column_config.TextColumn("Existencia"),
+                    "days_fmt": st.column_config.TextColumn("Días inventario"),
+                },
+            )
         else:
             low_stock["stock_fmt"] = low_stock["STOCK_QTY"].map(fmt_int)
             low_stock["min_fmt"] = low_stock["MIN_STOCK"].map(fmt_int)

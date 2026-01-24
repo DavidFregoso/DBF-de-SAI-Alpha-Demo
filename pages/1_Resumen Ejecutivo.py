@@ -7,7 +7,6 @@ import plotly.express as px
 import streamlit as st
 
 from sai_alpha.ui import (
-    apply_theme,
     build_time_series,
     export_buttons,
     format_currency_column,
@@ -26,7 +25,6 @@ from sai_alpha.etl import normalize_columns, resolve_dbf_dir
 
 
 st.set_page_config(page_title="Resumen Ejecutivo", page_icon="📊", layout="wide")
-apply_theme()
 render_page_nav("Resumen Ejecutivo")
 
 bundle = load_bundle()

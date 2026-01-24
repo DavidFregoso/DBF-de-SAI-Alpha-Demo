@@ -4,7 +4,17 @@ import streamlit as st
 
 from sai_alpha.formatting import fmt_int
 from sai_alpha.schema import require_columns
-from sai_alpha.ui import get_schema_messages, render_page_header, reset_theme_defaults
+from sai_alpha.ui import THEME_QUERY_MAP, get_schema_messages, render_page_header, reset_theme_defaults
+
+
+def _sync_theme_query_param() -> None:
+    theme_value = st.session_state.get("theme")
+    theme_param = THEME_QUERY_MAP.get(theme_value)
+    if not theme_param:
+        return
+    st.session_state["theme_source"] = "session"
+    st.query_params["theme"] = theme_param
+    st.rerun()
 
 
 def _render_dataset_card(title: str, df, required: set[str]) -> None:
@@ -31,6 +41,7 @@ def render(bundle, ventas) -> None:
         ["Claro", "Oscuro"],
         key="theme",
         horizontal=True,
+        on_change=_sync_theme_query_param,
     )
     col1, col2 = st.columns(2)
     with col1:
@@ -40,7 +51,7 @@ def render(bundle, ventas) -> None:
 
     if st.button("Restaurar defaults", key="reset_theme_defaults"):
         reset_theme_defaults()
-        st.success("Se restauraron los valores de apariencia por defecto.")
+        _sync_theme_query_param()
 
     st.selectbox(
         "Densidad de tablas",

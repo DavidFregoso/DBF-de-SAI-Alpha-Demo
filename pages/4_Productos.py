@@ -10,7 +10,6 @@ import streamlit as st
 from sai_alpha.formatting import fmt_int, fmt_money, fmt_num
 from sai_alpha.schema import ensure_inventory_columns, resolve_column
 from sai_alpha.ui import (
-    apply_theme,
     export_buttons,
     format_currency_column,
     format_integer_column,
@@ -28,7 +27,6 @@ from sai_alpha.ui import (
 
 
 st.set_page_config(page_title="Productos", page_icon="📦", layout="wide")
-apply_theme()
 render_page_nav("Productos")
 
 bundle = load_bundle()

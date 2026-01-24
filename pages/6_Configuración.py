@@ -2,13 +2,18 @@ from app import run_app
 
 import streamlit as st
 
-from sai_alpha.ui import apply_theme, init_session_state, render_page_nav, reset_theme_defaults
+from sai_alpha.ui import THEME_QUERY_MAP, init_session_state, init_theme_state, render_page_nav, reset_theme_defaults
 
 
 st.set_page_config(page_title="Configuración", page_icon="⚙️", layout="wide")
 init_session_state()
-apply_theme()
+init_theme_state()
 render_page_nav("Configuración")
+
+def _sync_theme_query_param() -> None:
+    st.query_params["theme"] = THEME_QUERY_MAP.get(st.session_state.get("theme"), "light")
+    st.rerun()
+
 
 st.markdown("<div class='app-header'>Demo Surtidora de Abarrotes</div>", unsafe_allow_html=True)
 st.caption("Dashboard Ejecutivo")
@@ -21,6 +26,7 @@ st.radio(
     ["Claro", "Oscuro"],
     key="theme",
     horizontal=True,
+    on_change=_sync_theme_query_param,
 )
 col1, col2 = st.columns(2)
 with col1:
@@ -30,7 +36,7 @@ with col2:
 
 if st.button("Restaurar defaults", key="reset_theme_defaults_page"):
     reset_theme_defaults()
-    st.success("Se restauraron los valores de apariencia por defecto.")
+    _sync_theme_query_param()
 
 st.selectbox(
     "Densidad de tablas",

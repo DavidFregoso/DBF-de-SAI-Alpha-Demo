@@ -4,7 +4,6 @@ import plotly.express as px
 import streamlit as st
 
 from sai_alpha.ui import (
-    apply_theme,
     export_buttons,
     format_currency_column,
     format_integer_column,
@@ -18,7 +17,6 @@ from sai_alpha.ui import (
 
 
 st.set_page_config(page_title="Vendedores", page_icon="🧑‍💼", layout="wide")
-apply_theme()
 render_page_nav("Vendedores")
 
 ventas = load_sales()

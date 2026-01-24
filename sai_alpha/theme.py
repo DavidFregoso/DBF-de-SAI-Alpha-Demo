@@ -8,7 +8,7 @@ import streamlit as st
 
 def get_theme_config(theme_name: str) -> dict[str, Any]:
     normalized = (theme_name or "Claro").strip().lower()
-    if normalized == "oscuro":
+    if normalized in {"oscuro", "dark"}:
         return {
             "name": "Oscuro",
             "bg": "#0f1116",
@@ -55,7 +55,7 @@ def get_theme_config(theme_name: str) -> dict[str, Any]:
     }
 
 
-def apply_global_css(theme_cfg: dict[str, Any]) -> None:
+def apply_theme_css(theme_cfg: dict[str, Any]) -> None:
     bg = theme_cfg["bg"]
     panel = theme_cfg["panel"]
     text = theme_cfg["text"]
@@ -63,11 +63,19 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
     accent = theme_cfg["accent"]
     grid = theme_cfg["grid"]
     is_dark = theme_cfg["name"] == "Oscuro"
+    hover_bg = "#1f2937" if is_dark else "rgba(15, 23, 42, 0.06)"
+    tab_active_bg = "#111827" if is_dark else "rgba(15, 23, 42, 0.08)"
     st.markdown(
         f"""
         <style>
             :root {{
                 color-scheme: { "dark" if is_dark else "light" };
+                --bg: {bg};
+                --fg: {text};
+                --card: {panel};
+                --border: {grid};
+                --muted: {muted};
+                --accent: {accent};
             }}
             #MainMenu {{ visibility: hidden; }}
             header {{ visibility: hidden; }}
@@ -80,18 +88,14 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
             body,
             .stApp,
             [data-testid="stAppViewContainer"] {{
-                background-color: {bg};
-                color: {text};
+                background-color: var(--bg);
+                color: var(--fg);
             }}
 
-            [data-testid="stSidebar"] {{
-                background-color: {panel};
-                min-width: 360px;
-                width: 360px;
-            }}
-            [data-testid="stSidebar"] > div {{
-                min-width: 360px;
-                width: 360px;
+            [data-testid="stHeader"],
+            [data-testid="stToolbar"] {{
+                background: var(--bg);
+                color: var(--fg);
             }}
 
             [data-testid="stAppViewContainer"] p,
@@ -113,17 +117,34 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
             [data-testid="stSidebar"] .stSelectbox,
             [data-testid="stSidebar"] .stMultiSelect,
             [data-testid="stSidebar"] .stDateInput {{
-                color: {text};
+                color: var(--fg);
+            }}
+
+            section[data-testid="stSidebar"] {{
+                background-color: var(--bg) !important;
+                min-width: 360px;
+                width: 360px;
+            }}
+            section[data-testid="stSidebar"] > div {{
+                min-width: 360px;
+                width: 360px;
+            }}
+            section[data-testid="stSidebar"] * {{
+                color: var(--fg) !important;
+            }}
+
+            [data-testid="stMarkdownContainer"] {{
+                color: var(--fg);
             }}
 
             .app-header {{
                 font-weight: 700;
                 font-size: 1.4rem;
-                color: {accent};
+                color: var(--accent);
                 margin-bottom: 0.25rem;
             }}
             .app-subtitle {{
-                color: {muted};
+                color: var(--muted);
                 margin-top: 0;
             }}
             .top-header {{
@@ -133,17 +154,17 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
                 gap: 1rem;
                 padding: 0.75rem 1rem;
                 border-radius: 12px;
-                background: {panel};
-                border: 1px solid {grid};
+                background: var(--card);
+                border: 1px solid var(--border);
                 margin-bottom: 1.5rem;
             }}
             .top-header-title {{
                 font-weight: 700;
                 font-size: 1.3rem;
-                color: {accent};
+                color: var(--accent);
             }}
             .top-header-sub {{
-                color: {muted};
+                color: var(--muted);
                 font-size: 0.9rem;
                 margin-top: 0.15rem;
             }}
@@ -154,12 +175,12 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
                 justify-content: flex-end;
             }}
             .status-pill {{
-                background: {bg};
-                border: 1px solid {grid};
+                background: var(--bg);
+                border: 1px solid var(--border);
                 border-radius: 999px;
                 padding: 0.35rem 0.75rem;
                 font-size: 0.8rem;
-                color: {text};
+                color: var(--fg);
                 box-shadow: 0 1px 2px rgba(0,0,0,0.04);
             }}
             .refresh-box {{
@@ -169,35 +190,38 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
                 gap: 0.35rem;
             }}
             .refresh-label {{
-                color: {muted};
+                color: var(--muted);
                 font-size: 0.8rem;
             }}
             [data-testid="stMetricValue"] {{
-                color: {accent};
+                color: var(--accent);
             }}
             [data-testid="stMetricDelta"] {{
-                color: {accent};
+                color: var(--accent);
+            }}
+            [data-testid="stMetricLabel"] {{
+                color: var(--muted);
             }}
             .section-title {{
-                border-left: 4px solid {accent};
+                border-left: 4px solid var(--accent);
                 padding-left: 0.6rem;
                 font-weight: 600;
                 font-size: 1.1rem;
-                color: {text};
+                color: var(--fg);
             }}
             .sidebar-title {{
                 font-weight: 700;
                 font-size: 1.05rem;
-                color: {accent};
+                color: var(--accent);
                 margin-bottom: 0.1rem;
             }}
             .sidebar-subtitle {{
-                color: {muted};
+                color: var(--muted);
                 font-size: 0.85rem;
                 margin-top: 0;
             }}
             .sidebar-theme {{
-                color: {text};
+                color: var(--fg);
                 font-size: 0.8rem;
                 margin-top: 0.35rem;
                 margin-bottom: 0.1rem;
@@ -211,30 +235,99 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
             }}
 
             [data-testid="stDataFrame"] {{
-                background: {panel};
-                border: 1px solid {grid};
-                color: {text};
+                background: var(--card);
+                border: 1px solid var(--border);
+                color: var(--fg);
             }}
             [data-testid="stDataFrame"] thead tr th {{
-                background: {bg};
-                color: {text};
-                border-bottom: 1px solid {grid};
+                background: var(--bg);
+                color: var(--fg);
+                border-bottom: 1px solid var(--border);
             }}
             [data-testid="stDataFrame"] tbody tr td {{
-                color: {text};
-                border-bottom: 1px solid {grid};
+                color: var(--fg);
+                border-bottom: 1px solid var(--border);
             }}
             [data-testid="stDataFrame"] tbody tr:hover {{
-                background: { "#1f2937" if is_dark else "rgba(0,0,0,0.04)" };
+                background: {hover_bg};
             }}
 
             .stSelectbox > div > div,
             .stMultiSelect > div > div,
             .stTextInput > div > div,
             .stDateInput > div > div {{
-                background-color: {bg};
-                color: {text};
-                border-color: {grid};
+                background-color: var(--card);
+                color: var(--fg);
+                border-color: var(--border);
+            }}
+
+            [data-testid="stButton"] > button,
+            [data-testid="baseButton-primary"] > button,
+            [data-testid="baseButton-secondary"] > button,
+            [data-testid="stDownloadButton"] button,
+            button[kind],
+            button {{
+                background: var(--card) !important;
+                border: 1px solid var(--border) !important;
+                color: var(--fg) !important;
+                box-shadow: none !important;
+            }}
+            button:hover,
+            [data-testid="stButton"] > button:hover,
+            [data-testid="baseButton-primary"] > button:hover,
+            [data-testid="baseButton-secondary"] > button:hover,
+            [data-testid="stDownloadButton"] button:hover {{
+                background: {hover_bg} !important;
+                color: var(--fg) !important;
+            }}
+            button *,
+            [data-testid="stButton"] > button *,
+            [data-testid="baseButton-primary"] > button *,
+            [data-testid="baseButton-secondary"] > button *,
+            [data-testid="stDownloadButton"] button * {{
+                color: var(--fg) !important;
+            }}
+
+            div[data-baseweb="select"] > div,
+            div[data-baseweb="input"] > div,
+            div[data-baseweb="textarea"] > div {{
+                background: var(--card) !important;
+                border-color: var(--border) !important;
+            }}
+            div[data-baseweb="select"] * {{
+                color: var(--fg) !important;
+            }}
+            div[data-baseweb="input"] input,
+            div[data-baseweb="textarea"] textarea {{
+                color: var(--fg) !important;
+                -webkit-text-fill-color: var(--fg) !important;
+                background: transparent !important;
+            }}
+            div[data-baseweb="input"] input::placeholder,
+            div[data-baseweb="textarea"] textarea::placeholder {{
+                color: var(--muted) !important;
+            }}
+
+            ul[role="listbox"],
+            li[role="option"] {{
+                background: var(--card) !important;
+                color: var(--fg) !important;
+            }}
+
+            .stRadio div[role="radiogroup"] label,
+            .stRadio div[role="radiogroup"] label span {{
+                color: var(--fg) !important;
+            }}
+
+            [role="tablist"] button {{
+                background: var(--card) !important;
+                border: 1px solid var(--border) !important;
+                color: var(--fg) !important;
+            }}
+            [role="tablist"] button[aria-selected="true"] {{
+                background: {tab_active_bg} !important;
+                border-color: var(--accent) !important;
+                color: var(--fg) !important;
             }}
 
             [data-testid="stSidebarNav"],
@@ -246,6 +339,10 @@ def apply_global_css(theme_cfg: dict[str, Any]) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def apply_global_css(theme_cfg: dict[str, Any]) -> None:
+    apply_theme_css(theme_cfg)
 
 
 def apply_plotly_theme(theme_cfg: dict[str, Any]) -> None:

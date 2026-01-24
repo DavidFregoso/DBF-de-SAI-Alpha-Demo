@@ -16,7 +16,15 @@ from sai_alpha.aggregates import build_aggregates
 from sai_alpha.sections import clientes, configuracion, pedidos, productos, resumen, vendedores
 from sai_alpha.sections import ventas as ventas_section
 from sai_alpha.state import init_state_once
-from sai_alpha.ui import apply_theme, load_bundle, load_orders, load_sales, render_app_header, render_sidebar_header
+from sai_alpha.ui import (
+    apply_theme_css,
+    init_theme_state,
+    load_bundle,
+    load_orders,
+    load_sales,
+    render_app_header,
+    render_sidebar_header,
+)
 
 
 def build_sidebar(
@@ -86,6 +94,9 @@ def run_app() -> None:
         initial_sidebar_state="expanded",
     )
 
+    init_theme_state()
+    apply_theme_css(st.session_state["theme"])
+
     bundle = st.session_state.setdefault("data_bundle", load_bundle())
     ventas = st.session_state.setdefault("sales_data", load_sales())
     pedidos_df = st.session_state.setdefault("orders_data", load_orders())
@@ -97,7 +108,6 @@ def run_app() -> None:
         st.stop()
 
     init_state_once(ventas)
-    apply_theme()
 
     sections = [
         "Configuración",

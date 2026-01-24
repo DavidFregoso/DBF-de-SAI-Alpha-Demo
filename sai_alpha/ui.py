@@ -26,6 +26,50 @@ PAGE_ROUTES = {
     "Pedidos por Surtir": "pages/5_Pedidos por Surtir.py",
 }
 
+THEME_QUERY_MAP = {
+    "Claro": "light",
+    "Oscuro": "dark",
+}
+
+THEME_QUERY_REVERSE = {
+    "light": "Claro",
+    "claro": "Claro",
+    "dark": "Oscuro",
+    "oscuro": "Oscuro",
+}
+
+
+def init_theme_state() -> None:
+    if "theme" not in st.session_state:
+        st.session_state["theme"] = "Oscuro"
+    if "theme_source" not in st.session_state:
+        st.session_state["theme_source"] = "session"
+
+    theme_param = st.query_params.get("theme")
+    if isinstance(theme_param, list):
+        theme_param = theme_param[0] if theme_param else None
+    if isinstance(theme_param, str):
+        normalized = theme_param.strip().lower()
+        if normalized in THEME_QUERY_REVERSE:
+            st.session_state["theme"] = THEME_QUERY_REVERSE[normalized]
+            st.session_state["theme_source"] = "query"
+
+    desired_param = THEME_QUERY_MAP.get(st.session_state.get("theme"))
+    if desired_param and st.query_params.get("theme") != desired_param:
+        st.query_params["theme"] = desired_param
+
+
+def apply_theme_css(theme_name: str) -> None:
+    density = st.session_state.get("table_density", "Confortable")
+    st.session_state["sidebar_header_rendered"] = False
+    row_height = {"Compacta": 26, "Confortable": 34, "Amplia": 42}.get(density, 34)
+    st.session_state["row_height"] = row_height
+    theme_cfg = get_theme_config(theme_name)
+    st.session_state["theme_cfg"] = theme_cfg
+    st.session_state["plotly_colors"] = theme_cfg["palette"]
+    apply_global_css(theme_cfg)
+    apply_plotly_theme(theme_cfg)
+
 
 @st.cache_data(show_spinner=False)
 def load_bundle() -> DataBundle:
@@ -164,16 +208,8 @@ def validate_bundle(bundle: DataBundle) -> DataBundle:
 
 
 def apply_theme() -> None:
-    density = st.session_state.get("table_density", "Confortable")
     theme_mode = st.session_state.get("theme", st.session_state.get("theme_mode", "Claro"))
-    st.session_state["sidebar_header_rendered"] = False
-    row_height = {"Compacta": 26, "Confortable": 34, "Amplia": 42}.get(density, 34)
-    st.session_state["row_height"] = row_height
-    theme_cfg = get_theme_config(theme_mode)
-    st.session_state["theme_cfg"] = theme_cfg
-    st.session_state["plotly_colors"] = theme_cfg["palette"]
-    apply_global_css(theme_cfg)
-    apply_plotly_theme(theme_cfg)
+    apply_theme_css(theme_mode)
 
 
 def render_page_nav(current_page: str) -> None:

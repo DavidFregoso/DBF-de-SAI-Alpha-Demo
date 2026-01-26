@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -97,14 +98,21 @@ def top_categories_bar(
     theme_cfg: dict[str, Any],
     top_n: int = 10,
 ) -> go.Figure:
+    working = _safe_df(df)
+    working[revenue_col] = (
+        pd.to_numeric(working[revenue_col], errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0)
+    )
+    working[category_col] = working[category_col].fillna("Sin datos").astype(str).str.strip()
     summary = (
-        _safe_df(df)
-        .groupby(category_col, dropna=False)[revenue_col]
+        working.groupby(category_col, dropna=False)[revenue_col]
         .sum()
         .reset_index()
         .sort_values(revenue_col, ascending=False)
         .head(top_n)
     )
+    currency_label = (currency or "MXN").upper()
     fig = px.bar(
         summary,
         x=revenue_col,
@@ -113,8 +121,10 @@ def top_categories_bar(
         labels={revenue_col: f"Ventas ({currency})", category_col: "Categoría"},
     )
     fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-    fig.update_traces(hovertemplate=f"%{{y}}<br>{plotly_hover_money(currency)}")
-    fig.update_xaxes(tickformat=",.2f")
+    fig.update_traces(
+        hovertemplate=f"Categoría: %{{y}}<br>Ventas: %{{x:,.0f}} {currency_label}<extra></extra>"
+    )
+    fig.update_xaxes(tickformat=",.0f")
     return fig
 
 
@@ -125,13 +135,20 @@ def channel_share_donut(
     currency: str,
     theme_cfg: dict[str, Any],
 ) -> go.Figure:
+    working = _safe_df(df)
+    working[revenue_col] = (
+        pd.to_numeric(working[revenue_col], errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0)
+    )
+    working[channel_col] = working[channel_col].fillna("Sin datos").astype(str).str.strip()
     summary = (
-        _safe_df(df)
-        .groupby(channel_col, dropna=False)[revenue_col]
+        working.groupby(channel_col, dropna=False)[revenue_col]
         .sum()
         .reset_index()
         .sort_values(revenue_col, ascending=False)
     )
+    currency_label = (currency or "MXN").upper()
     fig = px.pie(
         summary,
         values=revenue_col,
@@ -139,7 +156,12 @@ def channel_share_donut(
         hole=0.45,
     )
     fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-    fig.update_traces(hovertemplate=f"%{{label}}<br>{plotly_hover_money(currency)}")
+    fig.update_traces(
+        hovertemplate=(
+            f"%{{label}}<br>%{{percent}}<br>Ventas: %{{value:,.0f}} {currency_label}"
+            "<extra></extra>"
+        )
+    )
     return fig
 
 
@@ -154,7 +176,12 @@ def weekday_heatmap(
     if sales.empty or date_col not in sales.columns:
         return None
     working = sales[[date_col, revenue_col]].copy()
-    working = working.dropna()
+    working = working.dropna(subset=[date_col])
+    working[revenue_col] = (
+        pd.to_numeric(working[revenue_col], errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0)
+    )
     if working.empty:
         return None
     day_map = {
@@ -169,6 +196,7 @@ def weekday_heatmap(
     working["weekday"] = working[date_col].dt.dayofweek.map(day_map)
     working["week"] = working[date_col].dt.isocalendar().week.astype(int)
     pivot = working.pivot_table(index="weekday", columns="week", values=revenue_col, aggfunc="sum")
+    pivot = pivot.fillna(0)
     if pivot.empty or pivot.shape[1] < 2:
         return None
     fig = px.imshow(
@@ -177,7 +205,13 @@ def weekday_heatmap(
         labels=dict(x="Semana ISO", y="Día", color=f"Ventas ({currency})"),
     )
     fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-    fig.update_traces(hovertemplate=f"Semana: %{{x}}<br>Día: %{{y}}<br>{plotly_hover_money(currency)}")
+    currency_label = (currency or "MXN").upper()
+    fig.update_traces(
+        hovertemplate=(
+            f"Día: %{{y}}<br>Semana: %{{x}}<br>Ventas: %{{z:,.0f}} {currency_label}"
+            "<extra></extra>"
+        )
+    )
     return fig
 
 
@@ -216,16 +250,28 @@ def invoice_type_donut(
     currency: str,
     theme_cfg: dict[str, Any],
 ) -> go.Figure:
+    working = _safe_df(df)
+    working[revenue_col] = (
+        pd.to_numeric(working[revenue_col], errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0)
+    )
+    working[invoice_col] = working[invoice_col].fillna("Sin datos").astype(str).str.strip()
     summary = (
-        _safe_df(df)
-        .groupby(invoice_col, dropna=False)[revenue_col]
+        working.groupby(invoice_col, dropna=False)[revenue_col]
         .sum()
         .reset_index()
         .sort_values(revenue_col, ascending=False)
     )
+    currency_label = (currency or "MXN").upper()
     fig = px.pie(summary, values=revenue_col, names=invoice_col, hole=0.5)
     fig.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
-    fig.update_traces(hovertemplate=f"%{{label}}<br>{plotly_hover_money(currency)}")
+    fig.update_traces(
+        hovertemplate=(
+            f"%{{label}}<br>%{{percent}}<br>Ventas: %{{value:,.0f}} {currency_label}"
+            "<extra></extra>"
+        )
+    )
     return fig
 
 

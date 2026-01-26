@@ -16,7 +16,7 @@ Name: "desktopicon"; Description: "Crear acceso directo en el Escritorio"; Group
 
 [Files]
 ; Copia TODO lo que generó build_staging.ps1 (runtime + app + StartDemo.cmd)
-Source: "build\staging\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourcePath}\..\build\staging\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 
 [Icons]
